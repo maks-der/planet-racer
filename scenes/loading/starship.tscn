@@ -1,0 +1,93 @@
+[gd_scene format=3 uid="uid://cgimvvmbpjqvo"]
+
+[sub_resource type="BoxMesh" id="mesh_hull"]
+size = Vector3(1.15, 0.38, 3.6)
+
+[sub_resource type="StandardMaterial3D" id="mat_metal"]
+albedo_color = Color(0.99554044, 1, 0.8195205, 1)
+metallic = 0.85
+roughness = 0.28
+
+[sub_resource type="BoxMesh" id="mesh_nose"]
+size = Vector3(0.62, 0.22, 1.15)
+
+[sub_resource type="BoxMesh" id="mesh_cabin"]
+size = Vector3(0.62, 0.22, 1.1)
+
+[sub_resource type="BoxMesh" id="mesh_wing"]
+size = Vector3(1.5, 0.08, 1.3)
+
+[sub_resource type="BoxMesh" id="mesh_stripe"]
+size = Vector3(0.18, 0.06, 2.8)
+
+[sub_resource type="StandardMaterial3D" id="mat_accent"]
+shading_mode = 0
+albedo_color = Color(0.03455788, 0.92188686, 0.30503783, 1)
+
+[sub_resource type="CylinderMesh" id="mesh_engine"]
+top_radius = 0.16
+bottom_radius = 0.22
+height = 0.7
+
+[sub_resource type="CylinderMesh" id="mesh_flame"]
+top_radius = 0.02
+bottom_radius = 0.16
+height = 1.1
+
+[sub_resource type="StandardMaterial3D" id="mat_flame"]
+transparency = 1
+blend_mode = 1
+shading_mode = 0
+albedo_color = Color(1, 0.55, 0.2, 0.85)
+
+[node name="Starship" type="Node3D" unique_id=1861920199]
+
+[node name="Hull" type="MeshInstance3D" parent="." unique_id=63796216]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.2)
+mesh = SubResource("mesh_hull")
+surface_material_override/0 = SubResource("mat_metal")
+
+[node name="Nose" type="MeshInstance3D" parent="." unique_id=1679900409]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, -1.9)
+mesh = SubResource("mesh_nose")
+surface_material_override/0 = SubResource("mat_metal")
+
+[node name="Cabin" type="MeshInstance3D" parent="." unique_id=216083490]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.28, 0.15)
+mesh = SubResource("mesh_cabin")
+surface_material_override/0 = SubResource("mat_metal")
+
+[node name="WingL" type="MeshInstance3D" parent="." unique_id=310764900]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.15, -0.02, 0.35)
+mesh = SubResource("mesh_wing")
+surface_material_override/0 = SubResource("mat_metal")
+
+[node name="WingR" type="MeshInstance3D" parent="." unique_id=907421873]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.15, -0.02, 0.35)
+mesh = SubResource("mesh_wing")
+surface_material_override/0 = SubResource("mat_metal")
+
+[node name="Stripe" type="MeshInstance3D" parent="." unique_id=985041156]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.22, 0.1)
+mesh = SubResource("mesh_stripe")
+surface_material_override/0 = SubResource("mat_accent")
+
+[node name="EngineL" type="MeshInstance3D" parent="." unique_id=1538229377]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, -0.42, 0, 1.85)
+mesh = SubResource("mesh_engine")
+surface_material_override/0 = SubResource("mat_metal")
+
+[node name="EngineR" type="MeshInstance3D" parent="." unique_id=1165763005]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0.42, 0, 1.85)
+mesh = SubResource("mesh_engine")
+surface_material_override/0 = SubResource("mat_metal")
+
+[node name="FlameL" type="MeshInstance3D" parent="." unique_id=1669246236]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, -0.42, 0, 2.55)
+mesh = SubResource("mesh_flame")
+surface_material_override/0 = SubResource("mat_flame")
+
+[node name="FlameR" type="MeshInstance3D" parent="." unique_id=324690117]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0.42, 0, 2.55)
+mesh = SubResource("mesh_flame")
+surface_material_override/0 = SubResource("mat_flame")

@@ -1,0 +1,28 @@
+[gd_scene load_steps=3 format=3]
+
+[sub_resource type="StandardMaterial3D" id="mat_rock"]
+albedo_color = Color(0.58, 0.42, 0.3, 1)
+roughness = 0.94
+
+[sub_resource type="BoxMesh" id="mesh_a"]
+size = Vector3(0.55, 1.25, 0.5)
+
+[sub_resource type="BoxMesh" id="mesh_b"]
+size = Vector3(1.15, 0.4, 0.85)
+
+[node name="RockC" type="Node3D"]
+
+[node name="Spire" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.94, 0, 0.34, 0, 1, 0, -0.34, 0, 0.94, -0.15, 0.62, 0.05)
+mesh = SubResource("mesh_a")
+surface_material_override/0 = SubResource("mat_rock")
+
+[node name="Base" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.2, 0.16, -0.05)
+mesh = SubResource("mesh_b")
+surface_material_override/0 = SubResource("mat_rock")
+
+[node name="Chip" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.55, 0.42, 0.25)
+mesh = SubResource("mesh_a")
+surface_material_override/0 = SubResource("mat_rock")

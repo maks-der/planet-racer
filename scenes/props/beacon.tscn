@@ -1,0 +1,55 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/beacon.gd" id="1_beacon"]
+
+[sub_resource type="StandardMaterial3D" id="mat_ring"]
+albedo_color = Color(0.2, 0.9, 1, 1)
+emission_enabled = true
+emission = Color(0.2, 0.9, 1, 1)
+emission_energy_multiplier = 2.2
+roughness = 0.35
+
+[sub_resource type="TorusMesh" id="mesh_ring"]
+inner_radius = 7.0
+outer_radius = 8.2
+rings = 28
+ring_segments = 8
+
+[sub_resource type="CylinderMesh" id="mesh_beam"]
+top_radius = 0.18
+bottom_radius = 0.18
+height = 18.0
+
+[sub_resource type="StandardMaterial3D" id="mat_beam"]
+transparency = 1
+albedo_color = Color(0.2, 0.9, 1, 0.35)
+emission_enabled = true
+emission = Color(0.2, 0.9, 1, 1)
+emission_energy_multiplier = 1.4
+roughness = 0.4
+
+[node name="Beacon" type="Node3D"]
+script = ExtResource("1_beacon")
+
+[node name="Ring" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
+mesh = SubResource("mesh_ring")
+surface_material_override/0 = SubResource("mat_ring")
+
+[node name="Beam" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 9, 0)
+mesh = SubResource("mesh_beam")
+surface_material_override/0 = SubResource("mat_beam")
+
+[node name="NameLabel" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.4, 0)
+billboard = 1
+text = "RACE"
+font_size = 42
+outline_size = 12
+pixel_size = 0.0045
+visibility_range_end = 150.0
+visibility_range_end_margin = 40.0
+visibility_range_fade_mode = 1
+visibility_range_begin = 8.0
+visibility_range_begin_margin = 3.0

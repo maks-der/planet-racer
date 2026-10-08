@@ -1,0 +1,32 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Shader" path="res://shaders/planet.gdshader" id="1_planet"]
+[ext_resource type="Shader" path="res://shaders/atmosphere.gdshader" id="2_air"]
+
+[sub_resource type="ShaderMaterial" id="mat_planet"]
+shader = ExtResource("1_planet")
+
+[sub_resource type="SphereMesh" id="mesh_globe"]
+radius = 6.2
+height = 12.4
+radial_segments = 64
+rings = 32
+
+[sub_resource type="ShaderMaterial" id="mat_air"]
+shader = ExtResource("2_air")
+
+[sub_resource type="SphereMesh" id="mesh_air"]
+radius = 6.85
+height = 13.7
+radial_segments = 48
+rings = 24
+
+[node name="DesertPlanet" type="Node3D"]
+
+[node name="Globe" type="MeshInstance3D" parent="."]
+mesh = SubResource("mesh_globe")
+surface_material_override/0 = SubResource("mat_planet")
+
+[node name="Air" type="MeshInstance3D" parent="."]
+mesh = SubResource("mesh_air")
+surface_material_override/0 = SubResource("mat_air")

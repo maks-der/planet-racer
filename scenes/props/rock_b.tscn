@@ -1,0 +1,23 @@
+[gd_scene load_steps=3 format=3]
+
+[sub_resource type="StandardMaterial3D" id="mat_rock"]
+albedo_color = Color(0.46, 0.32, 0.24, 1)
+roughness = 0.97
+
+[sub_resource type="PrismMesh" id="mesh_prism"]
+size = Vector3(1.3, 1.15, 1.05)
+
+[sub_resource type="BoxMesh" id="mesh_foot"]
+size = Vector3(1.7, 0.35, 1.2)
+
+[node name="RockB" type="Node3D"]
+
+[node name="Foot" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.12, 0)
+mesh = SubResource("mesh_foot")
+surface_material_override/0 = SubResource("mat_rock")
+
+[node name="Prism" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.1, 0.7, 0)
+mesh = SubResource("mesh_prism")
+surface_material_override/0 = SubResource("mat_rock")

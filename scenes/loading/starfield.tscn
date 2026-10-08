@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Shader" path="res://shaders/stars.gdshader" id="1_stars"]
+
+[sub_resource type="ShaderMaterial" id="mat_stars"]
+shader = ExtResource("1_stars")
+
+[sub_resource type="SphereMesh" id="mesh_shell"]
+radius = 80.0
+height = 160.0
+radial_segments = 48
+rings = 24
+
+[node name="Starfield" type="MeshInstance3D"]
+mesh = SubResource("mesh_shell")
+surface_material_override/0 = SubResource("mat_stars")

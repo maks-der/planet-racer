@@ -1,0 +1,44 @@
+[gd_scene load_steps=4 format=3]
+
+[sub_resource type="StandardMaterial3D" id="mat_stone"]
+albedo_color = Color(0.28, 0.2, 0.16, 1)
+roughness = 0.94
+emission_enabled = true
+emission = Color(0.42, 0.24, 0.1, 1)
+emission_energy_multiplier = 0.18
+
+[sub_resource type="BoxMesh" id="mesh_post"]
+size = Vector3(0.16, 0.72, 1)
+
+[sub_resource type="BoxMesh" id="mesh_beam"]
+size = Vector3(0.55, 0.14, 1)
+
+[sub_resource type="BoxMesh" id="mesh_crown"]
+size = Vector3(1.75, 0.16, 1)
+
+[node name="TunnelArch" type="Node3D"]
+
+[node name="Left" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.78, 0.36, 0)
+mesh = SubResource("mesh_post")
+surface_material_override/0 = SubResource("mat_stone")
+
+[node name="Right" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.78, 0.36, 0)
+mesh = SubResource("mesh_post")
+surface_material_override/0 = SubResource("mat_stone")
+
+[node name="LeftShoulder" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.48, 0.74, 0)
+mesh = SubResource("mesh_beam")
+surface_material_override/0 = SubResource("mat_stone")
+
+[node name="RightShoulder" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.48, 0.74, 0)
+mesh = SubResource("mesh_beam")
+surface_material_override/0 = SubResource("mat_stone")
+
+[node name="Crown" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+mesh = SubResource("mesh_crown")
+surface_material_override/0 = SubResource("mat_stone")

@@ -1,0 +1,33 @@
+[gd_scene load_steps=3 format=3]
+
+[sub_resource type="StandardMaterial3D" id="mat_gate"]
+albedo_color = Color(0.2, 0.9, 1, 1)
+emission_enabled = true
+emission = Color(0.2, 0.9, 1, 1)
+emission_energy_multiplier = 2.0
+roughness = 0.4
+
+[sub_resource type="CylinderMesh" id="mesh_post"]
+top_radius = 0.25
+bottom_radius = 0.25
+height = 4.2
+
+[sub_resource type="BoxMesh" id="mesh_bar"]
+size = Vector3(50.0, 0.28, 0.28)
+
+[node name="Gate" type="Node3D"]
+
+[node name="PostL" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24.4, 2.1, 0)
+mesh = SubResource("mesh_post")
+surface_material_override/0 = SubResource("mat_gate")
+
+[node name="PostR" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24.4, 2.1, 0)
+mesh = SubResource("mesh_post")
+surface_material_override/0 = SubResource("mat_gate")
+
+[node name="Bar" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.2, 0)
+mesh = SubResource("mesh_bar")
+surface_material_override/0 = SubResource("mat_gate")
