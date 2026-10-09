@@ -30,6 +30,8 @@ var last_steer := 0.0
 var fix_flash := 0.0
 const SLOPE_LIMIT := 0.5
 const NOSE_AHEAD := 1.95
+const SPEED_LIMIT_KMH := 1227.0
+const SPEED_LIMIT := 1227.0 / 3.6
 
 var cp_index := 1
 var lap := 0
@@ -245,7 +247,7 @@ func _ai_input() -> Dictionary:
 		throttle = lerpf(0.48, 0.75, ai_skill)
 		drift = speed > 30.0 and corner > 0.58
 	else:
-		use_boost = speed > float(stats.max_speed) * 0.52 and boost > 28.0 and absf(ang) < 0.22
+		use_boost = speed > 40.0 and boost > 28.0 and absf(ang) < 0.22
 		if ai_skill < 0.75 and sin(_time * 3.0 + float(ai_cursor)) < 0.2:
 			use_boost = false
 	for other in get_tree().get_nodes_in_group("cars"):
@@ -324,7 +326,7 @@ func _point_along(dist: float) -> Vector3:
 
 func _look_ahead(fwd: Vector3) -> Dictionary:
 	var here: Dictionary = world.sample_surface(global_position)
-	var look := clampf(speed_mps() * 0.14, 4.0, 16.0)
+	var look := clampf(speed_mps() * 0.35, 8.0, 150.0)
 	var flat := Vector3(fwd.x, 0.0, fwd.z)
 	var mid: Dictionary = world.sample_surface(global_position + flat * look * 0.45)
 	var ahead: Dictionary = world.sample_surface(global_position + flat * look)
@@ -408,6 +410,10 @@ func _float_height(hover: float, floor_y: float, normal: Vector3) -> float:
 	return target
 
 
+func _scaled_accel(base: float, speed: float) -> float:
+	return base * pow(0.5, absf(speed) * 3.6 / 250.0)
+
+
 func _drive(dt: float, input: Dictionary, surface: Dictionary, height: float, hover: float, normal: Vector3) -> void:
 	var fwd := Util.forward_from_yaw(yaw)
 	var right := Util.right_from_yaw(yaw)
@@ -426,21 +432,20 @@ func _drive(dt: float, input: Dictionary, surface: Dictionary, height: float, ho
 	var crippled := _crippled()
 	boosting = bool(input.boost) and boost > 1.0 and not crippled
 	var accel := float(stats.accel) * (0.78 if not on_road else 1.0)
-	var cap := float(stats.boost_speed if boosting else stats.max_speed)
+	var cap := minf(float(stats.max_speed), SPEED_LIMIT)
 	if crippled:
 		cap = minf(cap, 16.0)
 		accel *= 0.42
-	if not on_road:
-		cap *= 0.8
 	if boosting:
-		accel *= 1.55
+		accel *= 3.0
 		boost -= float(stats.boost_drain) * dt
 	else:
 		boost = minf(100.0, boost + float(stats.boost_regen) * dt)
+	accel = _scaled_accel(accel, forward_speed)
 	drifting = bool(input.drift) and absf(forward_speed) > 12.0
 	var throttle := float(input.throttle)
 	var reverse_cap := minf(36.0, cap * 0.48)
-	var ramp := float(stats.accel) * (2.6 if boosting else 1.55)
+	var ramp := maxf(accel, float(stats.accel) * (1.05 if boosting else 0.35)) * 4.0
 	if throttle > 0.05:
 		_thrust = move_toward(_thrust, throttle * accel, ramp * dt)
 		forward_speed += _thrust * dt
@@ -493,26 +498,29 @@ func _fly(dt: float, input: Dictionary) -> void:
 	boosting = bool(input.boost) and boost > 1.0 and not crippled
 	var desired_air := 0.0
 	if float(input.throttle) > 0.0:
-		desired_air = float(stats.accel) * 0.5
+		desired_air = float(stats.accel) * 0.45
 	if crippled:
 		desired_air *= 0.35
 	if boosting:
-		desired_air += float(stats.accel) * 0.85
+		desired_air *= 3.0
 		boost -= float(stats.boost_drain) * 0.65 * dt
 	else:
 		boost = minf(100.0, boost + float(stats.boost_regen) * 0.5 * dt)
-	_air_thrust = move_toward(_air_thrust, desired_air, float(stats.accel) * 1.8 * dt)
+	var planar := Vector3(velocity.x, 0.0, velocity.z)
+	desired_air = _scaled_accel(desired_air, planar.length())
+	var air_ramp := float(stats.accel) * (5.4 if boosting else 1.8)
+	_air_thrust = move_toward(_air_thrust, desired_air, air_ramp * dt)
 	velocity += nose * _air_thrust * dt
 	velocity.y += air_pitch * 9.0 * dt
 	velocity += Util.right_from_yaw(yaw) * air_roll * 7.0 * dt
 	velocity.x -= velocity.x * 0.14 * dt
 	velocity.z -= velocity.z * 0.14 * dt
-	if crippled:
-		var glide := Vector3(velocity.x, 0.0, velocity.z)
-		if glide.length() > 16.0:
-			glide = glide.normalized() * 16.0
-			velocity.x = glide.x
-			velocity.z = glide.z
+	var glide := Vector3(velocity.x, 0.0, velocity.z)
+	var air_cap := 16.0 if crippled else minf(float(stats.max_speed), SPEED_LIMIT)
+	if glide.length() > air_cap:
+		glide = glide.normalized() * air_cap
+		velocity.x = glide.x
+		velocity.z = glide.z
 	drifting = false
 
 
@@ -535,7 +543,7 @@ func _apply_visual(normal: Vector3, dt: float) -> void:
 
 func _update_fx(surface: Dictionary) -> void:
 	var speed := speed_mps()
-	var power := clampf(speed / 30.0, 0.05, 1.0)
+	var power := clampf(speed / (SPEED_LIMIT * 0.45), 0.05, 1.0)
 	if boosting:
 		power = 1.0
 	for flame in _flames:
@@ -815,7 +823,7 @@ func _fill_audio() -> void:
 	var frames := playback.get_frames_available()
 	if frames <= 0:
 		return
-	var spd := clampf(speed_mps() / 80.0, 0.0, 1.3)
+	var spd := clampf(speed_mps() / SPEED_LIMIT, 0.0, 1.3)
 	var freq := lerpf(46.0, 128.0, spd)
 	if boosting:
 		freq *= 1.28

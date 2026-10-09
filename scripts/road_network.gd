@@ -19,6 +19,7 @@ var shortcut_edges := 0
 
 var _adj: Array = []
 var _hash: Dictionary = {}
+var _tracks: Array[Dictionary] = []
 var _rng := RandomNumberGenerator.new()
 
 
@@ -27,6 +28,7 @@ func generate(field: TerrainField, seed: int) -> void:
 	_rng.seed = seed + 501
 	edges.clear()
 	races.clear()
+	_tracks.clear()
 	node_xz = PackedVector2Array()
 	node_y = PackedFloat32Array()
 	outer_ids.clear()
@@ -35,8 +37,7 @@ func generate(field: TerrainField, seed: int) -> void:
 	tunnel_points = 0
 	bridge_points = 0
 	shortcut_edges = 0
-	_place_nodes()
-	_connect_network()
+	_lay_tracks()
 	_separate_tunnels()
 	_carve_corridors()
 	_build_hash()
@@ -100,101 +101,336 @@ func _surface(h: float, n: Vector3, on_road: bool, kind: int) -> Dictionary:
 	return {"height": h, "normal": n, "on_road": on_road, "kind": kind}
 
 
-func _place_nodes() -> void:
-	for i in 8:
-		var ang := TAU * float(i) / 8.0
-		var base := Vector2(cos(ang), sin(ang)) * TerrainField.HALF * 0.6
-		outer_ids.append(_add_node(_relax(base, TerrainField.HALF * 0.07)))
-	for i in 4:
-		var ang := TAU * float(i) / 4.0 + 0.4
-		var base := Vector2(cos(ang), sin(ang)) * TerrainField.HALF * 0.26
-		inner_ids.append(_add_node(_relax(base, TerrainField.HALF * 0.055)))
-	_spread(outer_ids, TerrainField.HALF * 0.1)
-	_spread(inner_ids, TerrainField.HALF * 0.07)
-	for i in node_xz.size():
-		node_y[i] = terrain.height_at(node_xz[i].x, node_xz[i].y) + 0.55
-
-
-func _relax(base: Vector2, jitter: float) -> Vector2:
-	var best := base
-	var best_score := 100000.0
-	for attempt in 28:
-		var p := base
-		if attempt > 0:
-			p += Vector2(_rng.randf_range(-jitter * 1.8, jitter * 1.8), _rng.randf_range(-jitter * 1.8, jitter * 1.8))
-		var limit := TerrainField.HALF * 0.72
-		p.x = clampf(p.x, -limit, limit)
-		p.y = clampf(p.y, -limit, limit)
-		var slope := terrain.slope_at(p.x, p.y)
-		var h := terrain.height_at(p.x, p.y)
-		var score := slope * 280.0 + maxf(h - 16.0, 0.0) * 2.4 + maxf(h - 40.0, 0.0) * 16.0
-		if score < best_score:
-			best_score = score
-			best = p
-	return best
-
-
-func _spread(ids: Array[int], min_dist: float) -> void:
-	for i in ids.size():
-		for j in range(i + 1, ids.size()):
-			var a := node_xz[ids[i]]
-			var b := node_xz[ids[j]]
-			var d := a.distance_to(b)
-			if d < min_dist and d > 0.1:
-				var push := (b - a).normalized() * ((min_dist - d) * 0.5)
-				node_xz[ids[i]] = _clamp_map(a - push)
-				node_xz[ids[j]] = _clamp_map(b + push)
-
-
 func _clamp_map(p: Vector2) -> Vector2:
 	var limit := TerrainField.HALF * 0.76
 	return Vector2(clampf(p.x, -limit, limit), clampf(p.y, -limit, limit))
 
 
 func _add_node(p: Vector2) -> int:
-	node_xz.append(p)
-	node_y.append(0.0)
+	var placed := _clamp_map(p)
+	node_xz.append(placed)
+	node_y.append(terrain.height_at(placed.x, placed.y) + 0.55)
 	return node_xz.size() - 1
 
 
-func _connect_network() -> void:
-	_adj.clear()
-	for _i in node_xz.size():
-		_adj.append([])
-	var linked := {}
-	for i in outer_ids.size():
-		_try_edge(outer_ids[i], outer_ids[(i + 1) % outer_ids.size()], false, linked)
-	for i in inner_ids.size():
-		_try_edge(inner_ids[i], inner_ids[(i + 1) % inner_ids.size()], false, linked)
-	for i in inner_ids.size():
-		_try_edge(inner_ids[i], outer_ids[(i * 2) % outer_ids.size()], false, linked)
-	_try_edge(outer_ids[0], outer_ids[4], false, linked)
-	_try_edge(outer_ids[2], outer_ids[6], false, linked)
+func _lay_tracks() -> void:
+	_tracks.clear()
+	for slot in 8:
+		var control := _article_polygon(slot)
+		_tracks.append(_commit_loop(control))
+	_link_tracks()
 
 
-func _try_edge(a: int, b: int, shortcut: bool, linked: Dictionary) -> bool:
-	if a == b:
-		return false
-	var key := "%d-%d" % [mini(a, b), maxi(a, b)]
-	if linked.has(key):
-		return false
-	var span := node_xz[a].distance_to(node_xz[b])
-	if span < 40.0:
-		return false
-	linked[key] = true
-	var edge := _build_edge(a, b, shortcut)
-	var index := edges.size()
-	edges.append(edge)
-	_adj[a].append({"to": b, "edge": index})
-	_adj[b].append({"to": a, "edge": index})
-	if shortcut:
-		shortcut_edges += 1
-	return true
+func _article_polygon(slot: int) -> PackedVector2Array:
+	var ang := TAU * float(slot) / 8.0 + _rng.randf_range(-0.22, 0.22)
+	var ring := 540.0 + _rng.randf_range(-40.0, 50.0)
+	var center := Vector2(cos(ang), sin(ang)) * ring
+	var half_x := lerpf(250.0, 390.0, float(slot) / 7.0) * _rng.randf_range(0.92, 1.06)
+	var half_z := half_x * _rng.randf_range(0.68, 0.9)
+	var difficulty := lerpf(0.45, 7.0, float(slot) / 7.0)
+	var span := maxf(half_x, half_z) * 2.0
+	var apart := maxf(88.0, span * 0.07)
+	var max_disp := span * 0.16
+	for attempt in 8:
+		var shaped := _shape_polygon(center, half_x, half_z, difficulty, apart, max_disp, attempt < 6)
+		if shaped.size() < 6 or _closed_crosses(shaped):
+			difficulty = minf(difficulty * 1.65, 16.0)
+			max_disp *= 0.82
+			continue
+		var spline := _spline_closed(shaped)
+		if _path_length(spline) < 900.0 or _closed_crosses(_resample(spline, 18.0)):
+			difficulty = minf(difficulty * 1.65, 16.0)
+			max_disp *= 0.82
+			continue
+		return shaped
+	return _oval_fallback(center, half_x, half_z, apart)
 
 
-func _build_edge(a: int, b: int, shortcut: bool) -> Dictionary:
-	var xz := _curve(node_xz[a], node_xz[b], shortcut)
-	var profile := _profile(xz, node_y[a], node_y[b], shortcut)
+func _shape_polygon(center: Vector2, half_x: float, half_z: float, difficulty: float, apart: float, max_disp: float, displace: bool) -> PackedVector2Array:
+	var cloud := PackedVector2Array()
+	var count := _rng.randi_range(12, 18)
+	for _i in count:
+		var p := center + Vector2(_rng.randf_range(-half_x, half_x), _rng.randf_range(-half_z, half_z))
+		cloud.append(_clamp_map(p))
+	var hull := _convex_hull(cloud)
+	if hull.size() < 4:
+		return PackedVector2Array()
+	for _k in 3:
+		_push_apart(hull, apart)
+	var shaped := hull
+	if displace:
+		shaped = _displace(hull, difficulty, max_disp)
+		for _k in 3:
+			_push_apart(shaped, apart)
+	for _k in 10:
+		_fix_angles(shaped)
+		_push_apart(shaped, apart)
+	return shaped
+
+
+func _oval_fallback(center: Vector2, half_x: float, half_z: float, apart: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	var steps := 10
+	for i in steps:
+		var a := TAU * float(i) / float(steps)
+		pts.append(_clamp_map(center + Vector2(cos(a) * half_x * 0.86, sin(a) * half_z * 0.86)))
+	for _k in 6:
+		_fix_angles(pts)
+		_push_apart(pts, apart)
+	return pts
+
+
+func _convex_hull(points: PackedVector2Array) -> PackedVector2Array:
+	var src: Array[Vector2] = []
+	for p in points:
+		src.append(p)
+	src.sort_custom(func(a: Vector2, b: Vector2) -> bool:
+		if absf(a.x - b.x) > 0.01:
+			return a.x < b.x
+		return a.y < b.y
+	)
+	var unique: Array[Vector2] = []
+	for p in src:
+		if unique.is_empty() or unique[unique.size() - 1].distance_squared_to(p) > 0.25:
+			unique.append(p)
+	if unique.size() < 3:
+		return PackedVector2Array()
+	var lower: Array[Vector2] = []
+	for p in unique:
+		while lower.size() >= 2 and _turn_cross(lower[lower.size() - 2], lower[lower.size() - 1], p) <= 0.0:
+			lower.pop_back()
+		lower.append(p)
+	var upper: Array[Vector2] = []
+	for i in range(unique.size() - 1, -1, -1):
+		var q: Vector2 = unique[i]
+		while upper.size() >= 2 and _turn_cross(upper[upper.size() - 2], upper[upper.size() - 1], q) <= 0.0:
+			upper.pop_back()
+		upper.append(q)
+	if not lower.is_empty():
+		lower.pop_back()
+	if not upper.is_empty():
+		upper.pop_back()
+	var hull := PackedVector2Array()
+	for p in lower:
+		hull.append(p)
+	for p in upper:
+		hull.append(p)
+	return hull
+
+
+func _turn_cross(o: Vector2, a: Vector2, b: Vector2) -> float:
+	return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+
+
+func _push_apart(data: PackedVector2Array, dst: float) -> void:
+	var dst2 := dst * dst
+	var n := data.size()
+	for i in n:
+		for j in range(i + 1, n):
+			var delta := data[j] - data[i]
+			var hl2 := delta.length_squared()
+			if hl2 < 0.01 or hl2 >= dst2:
+				continue
+			var hl := sqrt(hl2)
+			var shift := delta / hl * (dst - hl)
+			data[i] = _clamp_map(data[i] - shift)
+			data[j] = _clamp_map(data[j] + shift)
+
+
+func _displace(data: PackedVector2Array, difficulty: float, max_disp: float) -> PackedVector2Array:
+	var n := data.size()
+	var out := PackedVector2Array()
+	for i in n:
+		var disp_len := pow(_rng.randf(), difficulty) * max_disp
+		var mid := (data[i] + data[(i + 1) % n]) * 0.5
+		mid += Vector2.from_angle(_rng.randf() * TAU) * disp_len
+		out.append(data[i])
+		out.append(_clamp_map(mid))
+	return out
+
+
+func _fix_angles(data: PackedVector2Array) -> void:
+	var n := data.size()
+	if n < 3:
+		return
+	var limit := deg_to_rad(100.0)
+	for i in n:
+		var previous := (i - 1 + n) % n
+		var next := (i + 1) % n
+		var incoming := data[i] - data[previous]
+		var pl := incoming.length()
+		if pl < 0.01:
+			continue
+		incoming /= pl
+		var outgoing := data[next] - data[i]
+		var nl := outgoing.length()
+		if nl < 0.01:
+			continue
+		outgoing /= nl
+		var a := atan2(incoming.x * outgoing.y - incoming.y * outgoing.x, incoming.x * outgoing.x + incoming.y * outgoing.y)
+		if absf(a) <= limit:
+			continue
+		var diff := limit * signf(a) - a
+		var c := cos(diff)
+		var s := sin(diff)
+		var turned := Vector2(outgoing.x * c - outgoing.y * s, outgoing.x * s + outgoing.y * c) * nl
+		data[next] = _clamp_map(data[i] + turned)
+
+
+func _spline_closed(control: PackedVector2Array) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for i in control.size():
+		var seg := _catmull_segment(control, i)
+		var start_i := 0 if out.is_empty() else 1
+		for s in range(start_i, seg.size()):
+			out.append(seg[s])
+	if out.size() > 2 and out[0].distance_to(out[out.size() - 1]) > 1.0:
+		out.append(out[0])
+	return out
+
+
+func _catmull_segment(control: PackedVector2Array, index: int) -> PackedVector2Array:
+	var n := control.size()
+	var p0: Vector2 = control[(index - 1 + n) % n]
+	var p1: Vector2 = control[index]
+	var p2: Vector2 = control[(index + 1) % n]
+	var p3: Vector2 = control[(index + 2) % n]
+	var raw := PackedVector2Array()
+	raw.append(p1)
+	var t := 0.0
+	var guard := 0
+	while t < 1.0 and guard < 400:
+		guard += 1
+		var speed := maxf(_catmull_tangent(p0, p1, p2, p3, t).length(), 1.0)
+		t += SPACING / speed
+		if t >= 1.0:
+			break
+		raw.append(_clamp_map(_catmull(p0, p1, p2, p3, t)))
+	raw.append(p2)
+	return _resample(raw, SPACING)
+
+
+func _catmull(p0: Vector2, p1: Vector2, p2: Vector2, p3: Vector2, t: float) -> Vector2:
+	var t2 := t * t
+	var t3 := t2 * t
+	return 0.5 * (
+		(2.0 * p1) +
+		(-p0 + p2) * t +
+		(2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2 +
+		(-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
+	)
+
+
+func _catmull_tangent(p0: Vector2, p1: Vector2, p2: Vector2, p3: Vector2, t: float) -> Vector2:
+	var t2 := t * t
+	var b := -p0 + p2
+	var c := 2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3
+	var d := -p0 + 3.0 * p1 - 3.0 * p2 + p3
+	return 0.5 * (b + 2.0 * c * t + 3.0 * d * t2)
+
+
+func _commit_loop(control: PackedVector2Array) -> Dictionary:
+	var node_ids: Array[int] = []
+	for i in control.size():
+		node_ids.append(_add_node(control[i]))
+	var edge_ids: Array[int] = []
+	var n := control.size()
+	for i in n:
+		var xz := _catmull_segment(control, i)
+		edge_ids.append(_add_road(node_ids[i], node_ids[(i + 1) % n], xz))
+	return {"nodes": node_ids, "edges": edge_ids}
+
+
+func _link_tracks() -> void:
+	var count := _tracks.size()
+	var parent: Array[int] = []
+	parent.resize(count)
+	for i in count:
+		parent[i] = i
+	var pairs: Array[Dictionary] = []
+	for i in count:
+		for j in range(i + 1, count):
+			pairs.append(_closest_nodes(i, j))
+	pairs.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return float(a.dist) < float(b.dist)
+	)
+	var added := 0
+	for raw_pair in pairs:
+		var pair: Dictionary = raw_pair
+		var ia := int(pair.i)
+		var ib := int(pair.j)
+		var dist := float(pair.dist)
+		var separated := _find_parent(parent, ia) != _find_parent(parent, ib)
+		if dist < 56.0:
+			if separated:
+				_union_parent(parent, ia, ib)
+			continue
+		if dist > 900.0:
+			continue
+		if not separated and (dist > 320.0 or added >= 12):
+			continue
+		var xz := _link_curve(node_xz[int(pair.a)], node_xz[int(pair.b)])
+		_add_road(int(pair.a), int(pair.b), xz)
+		_union_parent(parent, ia, ib)
+		added += 1
+
+
+func _closest_nodes(i: int, j: int) -> Dictionary:
+	var na: Array = _tracks[i].nodes
+	var nb: Array = _tracks[j].nodes
+	var best_d := 1000000.0
+	var best_a := int(na[0])
+	var best_b := int(nb[0])
+	for raw_a in na:
+		var pa: Vector2 = node_xz[int(raw_a)]
+		for raw_b in nb:
+			var d := pa.distance_to(node_xz[int(raw_b)])
+			if d < best_d:
+				best_d = d
+				best_a = int(raw_a)
+				best_b = int(raw_b)
+	return {"i": i, "j": j, "a": best_a, "b": best_b, "dist": best_d}
+
+
+func _find_parent(parent: Array[int], index: int) -> int:
+	var cursor := index
+	while parent[cursor] != cursor:
+		parent[cursor] = parent[parent[cursor]]
+		cursor = parent[cursor]
+	return cursor
+
+
+func _union_parent(parent: Array[int], a: int, b: int) -> void:
+	var ra := _find_parent(parent, a)
+	var rb := _find_parent(parent, b)
+	if ra != rb:
+		parent[rb] = ra
+
+
+func _link_curve(a: Vector2, b: Vector2) -> PackedVector2Array:
+	var chord := b - a
+	var length := chord.length()
+	var raw := PackedVector2Array()
+	if length < 1.0:
+		raw.append(a)
+		raw.append(b)
+		return raw
+	var dir := chord / length
+	var perp := Vector2(-dir.y, dir.x)
+	if perp.dot((a + b) * 0.5) < 0.0:
+		perp = -perp
+	var amp := minf(32.0, length * 0.08)
+	var steps := clampi(int(length / 16.0), 4, 48)
+	for i in steps + 1:
+		var t := float(i) / float(steps)
+		raw.append(_clamp_map(a.lerp(b, t) + perp * sin(t * PI) * amp))
+	raw[0] = a
+	raw[raw.size() - 1] = b
+	return _resample(raw, SPACING)
+
+
+func _add_road(a: int, b: int, xz: PackedVector2Array) -> int:
+	var profile: Dictionary = _profile(xz, node_y[a], node_y[b], false)
 	var pts := PackedVector3Array()
 	var kinds: PackedByteArray = profile.kinds
 	var ys: PackedFloat32Array = profile.y
@@ -212,91 +448,57 @@ func _build_edge(a: int, b: int, shortcut: bool) -> Dictionary:
 			bridges += 1
 	tunnel_points += tunnels
 	bridge_points += bridges
-	return {
+	edges.append({
 		"a": a,
 		"b": b,
 		"points": pts,
 		"kinds": kinds,
-		"shortcut": shortcut,
-		"width": 32.0 if shortcut else 46.0,
+		"shortcut": false,
+		"width": 46.0,
 		"length": length,
 		"tunnels": tunnels,
 		"bridges": bridges,
-	}
+	})
+	return edges.size() - 1
 
 
-func _curve(a: Vector2, b: Vector2, shortcut: bool) -> PackedVector2Array:
-	var length := a.distance_to(b)
-	if length < 0.01:
-		var tiny := PackedVector2Array()
-		tiny.append(a)
-		tiny.append(b)
-		return tiny
-	var controls := _relief_controls(a, b, shortcut)
-	return _resample(_smooth_relief(controls), SPACING)
+func _path_length(pts: PackedVector2Array) -> float:
+	var total := 0.0
+	for i in range(1, pts.size()):
+		total += pts[i].distance_to(pts[i - 1])
+	return total
 
 
-func _relief_controls(a: Vector2, b: Vector2, shortcut: bool) -> PackedVector2Array:
-	var pts := PackedVector2Array()
-	pts.append(a)
-	var pos := a
-	var step := 28.0 if shortcut else 42.0
-	var reach := 90.0 if shortcut else 260.0
-	var bend := _rng.randf_range(-1.05, 1.05)
-	var guard := 0
-	while pos.distance_to(b) > step * 1.55 and guard < 110:
-		guard += 1
-		var remain := b - pos
-		var dist := remain.length()
-		if dist < 0.01:
-			break
-		var dir := remain / dist
-		var perp := Vector2(-dir.y, dir.x)
-		if dist > step * 5.0:
-			bend = clampf(bend + _rng.randf_range(-0.14, 0.14), -1.25, 1.25)
-		else:
-			bend = move_toward(bend, 0.0, 0.22)
-		var want := bend * reach * 0.92
-		var best := _clamp_map(pos + dir * step)
-		var best_cost := 1000000.0
-		var samples := 7 if shortcut else 13
-		for i in samples:
-			var off := lerpf(-reach, reach, float(i) / float(samples - 1))
-			var candidate := _clamp_map(pos + dir * step + perp * off)
-			var gained := dist - candidate.distance_to(b)
-			if gained < step * 0.28:
+func _closed_crosses(pts: PackedVector2Array) -> bool:
+	var n := pts.size()
+	if n < 4:
+		return false
+	var last := n - 1
+	if pts[0].distance_to(pts[last]) < 4.0:
+		last -= 1
+	var count := last + 1
+	for i in count:
+		var a := pts[i]
+		var b := pts[(i + 1) % count]
+		for j in range(i + 2, count):
+			if i == 0 and j == count - 1:
 				continue
-			var ahead := _clamp_map(candidate + dir * minf(step, dist * 0.35))
-			var cost := _ground_penalty(candidate) + _ground_penalty(ahead) * 0.65
-			cost += absf(off - want) * 0.16
-			if cost < best_cost:
-				best_cost = cost
-				best = candidate
-		if best.distance_to(pos) < step * 0.3:
-			best = _clamp_map(pos + dir * step)
-		pts.append(best)
-		pos = best
-	pts.append(b)
-	return pts
+			if _segments_cross(a, b, pts[j], pts[(j + 1) % count]):
+				return true
+	return false
 
 
-func _ground_penalty(p: Vector2) -> float:
-	var slope := terrain.slope_at(p.x, p.y)
-	if slope <= 0.1:
-		return 0.0
-	return (slope - 0.1) * 90.0
+func _segments_cross(a: Vector2, b: Vector2, c: Vector2, d: Vector2) -> bool:
+	var r := b - a
+	var s := d - c
+	var den := r.cross(s)
+	if absf(den) < 0.0001:
+		return false
+	var q := c - a
+	var t := q.cross(s) / den
+	var u := q.cross(r) / den
+	return t > 0.04 and t < 0.96 and u > 0.04 and u < 0.96
 
-
-func _smooth_relief(pts: PackedVector2Array) -> PackedVector2Array:
-	if pts.size() < 4:
-		return pts
-	var out := PackedVector2Array()
-	out.append(pts[0])
-	for i in range(1, pts.size() - 1):
-		var p: Vector2 = pts[i - 1] * 0.22 + pts[i] * 0.56 + pts[i + 1] * 0.22
-		out.append(_clamp_map(p))
-	out.append(pts[pts.size() - 1])
-	return out
 
 
 func _resample(pts: PackedVector2Array, spacing: float) -> PackedVector2Array:
@@ -583,206 +785,138 @@ func _closest_road(x: float, z: float) -> Dictionary:
 
 
 func _build_races() -> void:
-	var circuits := _circuit_candidates()
-	circuits.sort_custom(func(a, b): return float(a.length) < float(b.length))
-	var picked := _pick_spread(circuits, 8)
-	while picked.size() < 8 and not circuits.is_empty():
-		picked.append(circuits[mini(picked.size(), circuits.size() - 1)])
-	if picked.size() < 8:
-		picked.append_array(_fallback_loops(8 - picked.size()))
-	var circuit_names := [
+	var circuit_names: Array[String] = [
 		"Mesa Loop", "Bridge Circuit", "Tunnel Gauntlet", "Grand Horizon",
 		"Needle Circuit", "Oasis Ring", "Scorch GP", "Vortex Cup",
 	]
-	for i in 8:
-		races.append(_finalize_race(picked[i], circuit_names[i], "circuit"))
+	for i in _tracks.size():
+		var edge_ids: Array = _tracks[i].edges
+		var pts := _align_to_apex(_trace_loop(edge_ids))
+		races.append(_finalize_race(_pack_points(pts, edge_ids), circuit_names[i], "circuit"))
 
 
-func _circuit_candidates() -> Array[Dictionary]:
-	var out: Array[Dictionary] = []
-	var seen := {}
-	_add_cycle(out, seen, _ring_edges(outer_ids), outer_ids[0])
-	_add_cycle(out, seen, _ring_edges(inner_ids), inner_ids[0])
-	var diameter_a := _find_edge(outer_ids[0], outer_ids[4])
-	var diameter_b := _find_edge(outer_ids[2], outer_ids[6])
-	if diameter_a >= 0:
-		var left: Array = []
-		for i in 4:
-			left.append(_find_edge(outer_ids[i], outer_ids[(i + 1) % 8]))
-		left.append(diameter_a)
-		_add_cycle(out, seen, left, outer_ids[0])
-		var right: Array = []
-		for i in range(4, 8):
-			right.append(_find_edge(outer_ids[i], outer_ids[(i + 1) % 8]))
-		right.append(diameter_a)
-		_add_cycle(out, seen, right, outer_ids[4])
-	if diameter_b >= 0:
-		var arc: Array = []
-		for i in range(2, 6):
-			arc.append(_find_edge(outer_ids[i], outer_ids[(i + 1) % 8]))
-		arc.append(diameter_b)
-		_add_cycle(out, seen, arc, outer_ids[2])
-	for i in inner_ids.size():
-		var o0 := (i * 2) % outer_ids.size()
-		var wedge: Array = [
-			_find_edge(inner_ids[i], outer_ids[o0]),
-			_find_edge(outer_ids[o0], outer_ids[(o0 + 1) % outer_ids.size()]),
-			_find_edge(outer_ids[(o0 + 1) % outer_ids.size()], outer_ids[(o0 + 2) % outer_ids.size()]),
-			_find_edge(outer_ids[(o0 + 2) % outer_ids.size()], inner_ids[(i + 1) % inner_ids.size()]),
-			_find_edge(inner_ids[(i + 1) % inner_ids.size()], inner_ids[i]),
-		]
-		_add_cycle(out, seen, wedge, inner_ids[i])
+func _trace_loop(edge_ids: Array) -> PackedVector3Array:
+	var pts := PackedVector3Array()
+	for raw in edge_ids:
+		var seq: PackedVector3Array = edges[int(raw)].points
+		var start_i := 0 if pts.is_empty() else 1
+		for s in range(start_i, seq.size()):
+			pts.append(seq[s])
+	if pts.size() > 2 and pts[0].distance_to(pts[pts.size() - 1]) > 4.0:
+		pts.append(pts[0])
+	return pts
+
+
+func _align_to_apex(pts: PackedVector3Array) -> PackedVector3Array:
+	var count := _open_count(pts)
+	if count < 4:
+		return pts
+	var peaks := _apex_indices(pts)
+	var start := 0
+	var best := -1.0
+	for index in peaks:
+		var prev: Vector3 = pts[(index + count - 1) % count]
+		var here: Vector3 = pts[index]
+		var nxt: Vector3 = pts[(index + 1) % count]
+		var back := Vector2(here.x - prev.x, here.z - prev.z)
+		var fwd := Vector2(nxt.x - here.x, nxt.z - here.z)
+		var ang := 0.0
+		if back.length_squared() > 0.04 and fwd.length_squared() > 0.04:
+			ang = absf(back.normalized().angle_to(fwd.normalized()))
+		if ang > best:
+			best = ang
+			start = index
+	var out := PackedVector3Array()
+	for i in count:
+		out.append(pts[(start + i) % count])
+	out.append(out[0])
 	return out
 
 
-func _add_cycle(bucket: Array[Dictionary], seen: Dictionary, edge_ids: Array, start_node: int) -> void:
-	if edge_ids.is_empty() or edge_ids.has(-1):
-		return
-	var signature := _signature(edge_ids)
-	if seen.has(signature):
-		return
-	var built := _compose(edge_ids, start_node)
-	if built.is_empty():
-		return
-	if float(built.length) < 420.0:
-		return
-	seen[signature] = true
-	built["edges"] = edge_ids
-	bucket.append(built)
+func _apex_indices(pts: PackedVector3Array) -> Array[int]:
+	var count := _open_count(pts)
+	if count < 8:
+		return [0]
+	var turn := PackedFloat32Array()
+	turn.resize(count)
+	for i in count:
+		var prev: Vector3 = pts[(i + count - 1) % count]
+		var here: Vector3 = pts[i]
+		var nxt: Vector3 = pts[(i + 1) % count]
+		var back := Vector2(here.x - prev.x, here.z - prev.z)
+		var fwd := Vector2(nxt.x - here.x, nxt.z - here.z)
+		if back.length_squared() < 0.04 or fwd.length_squared() < 0.04:
+			turn[i] = 0.0
+		else:
+			turn[i] = absf(back.normalized().angle_to(fwd.normalized()))
+	var smooth := PackedFloat32Array()
+	smooth.resize(count)
+	for i in count:
+		var acc := 0.0
+		for k in range(-3, 4):
+			acc += turn[(i + k + count) % count]
+		smooth[i] = acc / 7.0
+	var min_sep := 8
+	var peaks: Array[int] = []
+	for i in count:
+		if smooth[i] < 0.012:
+			continue
+		if smooth[i] + 0.000001 < smooth[(i + count - 1) % count]:
+			continue
+		if smooth[i] + 0.000001 < smooth[(i + 1) % count]:
+			continue
+		var merged := false
+		for p in peaks.size():
+			if _ring_gap(peaks[p], i, count) < min_sep:
+				if smooth[i] > smooth[peaks[p]]:
+					peaks[p] = i
+				merged = true
+				break
+		if not merged:
+			peaks.append(i)
+	if peaks.size() >= 2 and _ring_gap(peaks[0], peaks[peaks.size() - 1], count) < min_sep:
+		if smooth[peaks[peaks.size() - 1]] > smooth[peaks[0]]:
+			peaks[0] = peaks[peaks.size() - 1]
+		peaks.remove_at(peaks.size() - 1)
+	if peaks.size() < 4:
+		peaks = _strongest_peaks(smooth, 4, min_sep)
+	peaks.sort()
+	return peaks
 
 
-func _pick_spread(items: Array[Dictionary], count: int) -> Array[Dictionary]:
-	var picked: Array[Dictionary] = []
-	if items.is_empty():
-		return picked
-	var used := {}
-	for slot in count:
-		var target := lerpf(0.08, 0.92, float(slot) / float(maxi(count - 1, 1)))
-		var want := lerpf(float(items[0].length), float(items[items.size() - 1].length), target)
-		var best_i := -1
-		var best_score := 100000000.0
-		for i in items.size():
-			if used.has(i):
-				continue
-			var score := absf(float(items[i].length) - want)
-			if score < best_score:
-				best_score = score
-				best_i = i
-		if best_i >= 0:
-			used[best_i] = true
-			picked.append(items[best_i])
+func _strongest_peaks(smooth: PackedFloat32Array, want: int, min_sep: int) -> Array[int]:
+	var order: Array[int] = []
+	for i in smooth.size():
+		order.append(i)
+	order.sort_custom(func(a: int, b: int) -> bool:
+		return smooth[a] > smooth[b]
+	)
+	var picked: Array[int] = []
+	var count := smooth.size()
+	for index in order:
+		var clear := true
+		for have in picked:
+			if _ring_gap(have, index, count) < min_sep:
+				clear = false
+				break
+		if not clear:
+			continue
+		picked.append(index)
+		if picked.size() >= want:
+			break
+	picked.sort()
 	return picked
 
 
-func _fallback_loops(count: int) -> Array[Dictionary]:
-	var out: Array[Dictionary] = []
-	var center := Vector2.ZERO
-	for n in count:
-		var pts := PackedVector3Array()
-		var rx := 260.0 + float(n) * 70.0
-		var rz := 200.0 + float(n) * 55.0
-		var steps := 64
-		for i in steps + 1:
-			var a := TAU * float(i) / float(steps)
-			var p := center + Vector2(cos(a) * rx, sin(a) * rz)
-			var y := terrain.height_at(p.x, p.y) + 0.6
-			pts.append(Vector3(p.x, y, p.y))
-		out.append(_pack_points(pts, []))
-	return out
+func _ring_gap(a: int, b: int, count: int) -> int:
+	var d := absi(a - b)
+	return mini(d, count - d)
 
 
-func _ring_edges(ids: Array[int]) -> Array:
-	var list: Array = []
-	for i in ids.size():
-		list.append(_find_edge(ids[i], ids[(i + 1) % ids.size()]))
-	return list
-
-
-func _find_edge(a: int, b: int) -> int:
-	for link in _adj[a]:
-		if int(link.to) == b:
-			return int(link.edge)
-	return -1
-
-
-func _shortest(start: int, goal: int, ignore_edge: int, prefer_shortcut: bool = false) -> Dictionary:
-	var n := node_xz.size()
-	var dist: Array[float] = []
-	dist.resize(n)
-	dist.fill(INF)
-	var prev_n: Array[int] = []
-	prev_n.resize(n)
-	prev_n.fill(-1)
-	var prev_e: Array[int] = []
-	prev_e.resize(n)
-	prev_e.fill(-1)
-	dist[start] = 0.0
-	var open: Array[int] = [start]
-	while not open.is_empty():
-		var best_i := 0
-		for i in open.size():
-			if dist[open[i]] < dist[open[best_i]]:
-				best_i = i
-		var u := open[best_i]
-		open.remove_at(best_i)
-		if u == goal:
-			break
-		for link in _adj[u]:
-			var ei := int(link.edge)
-			if ei == ignore_edge:
-				continue
-			var e: Dictionary = edges[ei]
-			var w := float(e.length)
-			if prefer_shortcut and bool(e.shortcut):
-				w *= 0.45
-			var v := int(link.to)
-			if dist[u] + w < dist[v]:
-				dist[v] = dist[u] + w
-				prev_n[v] = u
-				prev_e[v] = ei
-				if not open.has(v):
-					open.append(v)
-	if dist[goal] == INF or prev_n[goal] == -1 and start != goal:
-		return {}
-	var edge_ids: Array = []
-	var cur := goal
-	var guard := 0
-	while cur != start and guard < 64:
-		guard += 1
-		if prev_e[cur] < 0:
-			return {}
-		edge_ids.append(prev_e[cur])
-		cur = prev_n[cur]
-	edge_ids.reverse()
-	return {"edges": edge_ids, "start": start, "length": dist[goal]}
-
-
-func _compose(edge_ids: Array, start_node: int) -> Dictionary:
-	var pts := _walk(edge_ids, start_node)
-	if pts.size() < 8:
-		return {}
-	return _pack_points(pts, edge_ids)
-
-
-func _walk(edge_ids: Array, start_node: int) -> PackedVector3Array:
-	var pts := PackedVector3Array()
-	var current := start_node
-	for raw in edge_ids:
-		var ei := int(raw)
-		var e: Dictionary = edges[ei]
-		var seq: PackedVector3Array = e.points
-		var forward := int(e.a) == current
-		if forward:
-			var start_i := 0 if pts.is_empty() else 1
-			for i in range(start_i, seq.size()):
-				pts.append(seq[i])
-			current = int(e.b)
-		else:
-			var from_i := seq.size() - 1 if pts.is_empty() else seq.size() - 2
-			for i in range(from_i, -1, -1):
-				pts.append(seq[i])
-			current = int(e.a)
-	return pts
+func _open_count(pts: PackedVector3Array) -> int:
+	if pts.size() > 2 and pts[0].distance_to(pts[pts.size() - 1]) < 4.0:
+		return pts.size() - 1
+	return pts.size()
 
 
 func _pack_points(pts: PackedVector3Array, edge_ids: Array) -> Dictionary:
@@ -823,20 +957,15 @@ func _finalize_race(data: Dictionary, race_name: String, kind: String) -> Dictio
 	var laps := 1
 	if circuit:
 		laps = 3 if length < 1500.0 else 2
-	var spacing := 156.0 if length > 1100.0 else 116.0
+	var peaks := _apex_indices(pts)
 	var cps := PackedVector3Array()
 	var cp_dist := PackedFloat32Array()
-	cps.append(pts[0])
-	cp_dist.append(0.0)
-	var cursor := spacing
-	var margin := spacing * 0.7 if circuit else 12.0
-	while cursor < length - margin:
-		cps.append(point_at(pts, dists, cursor))
-		cp_dist.append(cursor)
-		cursor += spacing
-	if not circuit:
-		cps.append(pts[pts.size() - 1])
-		cp_dist.append(length)
+	for index in peaks:
+		cps.append(pts[index])
+		cp_dist.append(dists[index])
+	if cps.is_empty():
+		cps.append(pts[0])
+		cp_dist.append(0.0)
 	var dir := pts[mini(3, pts.size() - 1)] - pts[0]
 	dir.y = 0.0
 	if dir.length_squared() < 0.01:
@@ -871,14 +1000,3 @@ func _finalize_race(data: Dictionary, race_name: String, kind: String) -> Dictio
 		"has_bridge": data.has_bridge,
 		"has_shortcut": data.has_shortcut,
 	}
-
-
-func _signature(edge_ids: Array) -> String:
-	var ids: Array[int] = []
-	for raw in edge_ids:
-		ids.append(int(raw))
-	ids.sort()
-	var parts := PackedStringArray()
-	for id in ids:
-		parts.append(str(id))
-	return ",".join(parts)

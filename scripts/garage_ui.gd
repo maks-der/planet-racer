@@ -98,8 +98,8 @@ func _refresh() -> void:
 	_stat_label.text = "%s\n%s\nTop speed %d km/h    Boost %d km/h    Accel %d    Grip %d    Air %0.1f" % [
 		preset.name,
 		preset.blurb,
-		int(float(preset.max_speed) * 3.6),
-		int(float(preset.boost_speed) * 3.6),
+		int(round(float(preset.max_speed) * 3.6)),
+		int(round(float(preset.boost_speed) * 3.6)),
 		int(preset.accel),
 		int(preset.grip),
 		float(preset.air),

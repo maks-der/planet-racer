@@ -536,48 +536,53 @@ func _spawn_fix_stations() -> void:
 	var root := Node3D.new()
 	root.name = "FixStations"
 	add_child(root)
-	var spacing := 2400.0
-	var min_gap := 900.0
+	var spacing := 1800.0
+	var min_gap := 420.0
 	var placed: Array[Vector2] = []
+	var travelled := 0.0
+	var next_at := 500.0
 	for edge in roads.edges:
 		var pts: PackedVector3Array = edge.points
 		if pts.size() < 2:
 			continue
-		var walked := 500.0
-		var cursor := 0.0
 		for i in range(1, pts.size()):
-			cursor += pts[i - 1].distance_to(pts[i])
-			if cursor < walked:
+			travelled += pts[i - 1].distance_to(pts[i])
+			if travelled < next_at:
 				continue
-			walked = cursor + spacing
 			var dir := pts[i] - pts[i - 1]
 			dir.y = 0.0
 			if dir.length_squared() < 1.0:
+				next_at = travelled + 140.0
 				continue
 			dir = dir.normalized()
 			var side := dir.cross(Vector3.UP)
 			if side.length_squared() < 0.01:
+				next_at = travelled + 140.0
 				continue
 			side = side.normalized()
 			var spot := pts[i] + side * 16.0
+			var opposite := pts[i] - side * 16.0
+			if terrain.slope_at(opposite.x, opposite.z) < terrain.slope_at(spot.x, spot.z):
+				spot = opposite
+				side = -side
 			var flat := Vector2(spot.x, spot.z)
-			if flat.length() > TerrainField.HALF * 0.88:
-				continue
-			if terrain.slope_at(spot.x, spot.z) > 0.28:
+			if flat.length() > TerrainField.HALF * 0.88 or terrain.slope_at(spot.x, spot.z) > 0.62:
+				next_at = travelled + 140.0
 				continue
 			var crowded := false
 			for other in placed:
 				if flat.distance_to(other) < min_gap:
 					crowded = true
 					break
+			if not crowded:
+				for beacon in beacon_positions:
+					if flat.distance_to(Vector2(beacon.x, beacon.z)) < 160.0:
+						crowded = true
+						break
 			if crowded:
+				next_at = travelled + 180.0
 				continue
-			for beacon in beacon_positions:
-				if flat.distance_to(Vector2(beacon.x, beacon.z)) < 160.0:
-					crowded = true
-					break
-			if crowded:
-				continue
+			next_at = travelled + spacing
 			var y := float(sample_surface(spot).height)
 			var pos := Vector3(spot.x, y, spot.z)
 			_build_fix_arch(root, pos, dir, side)
@@ -943,11 +948,11 @@ func _update_camera(dt: float) -> void:
 	var lag := 3.4
 	match camera_mode:
 		1:
-			dist = lerpf(13.5, 18.5, clampf(speed / 80.0, 0.0, 1.0))
-			height = lerpf(5.2, 8.2, clampf(speed / 80.0, 0.0, 1.0))
+			dist = lerpf(13.5, 18.5, clampf(speed / HoverCar.SPEED_LIMIT, 0.0, 1.0))
+			height = lerpf(5.2, 8.2, clampf(speed / HoverCar.SPEED_LIMIT, 0.0, 1.0))
 			look_ahead = 6.5
 			look_up = 1.0
-			target_fov = 64.0 + clampf(speed / 90.0, 0.0, 1.0) * 8.0
+			target_fov = 64.0 + clampf(speed / HoverCar.SPEED_LIMIT, 0.0, 1.0) * 8.0
 			lag = 2.6
 		2:
 			var seat := player.global_transform * Transform3D(Basis.IDENTITY, Vector3(0.0, 0.9, -0.7))
@@ -964,12 +969,12 @@ func _update_camera(dt: float) -> void:
 			target_fov = 86.0
 			lag = 9.0
 		_:
-			dist = lerpf(7.4, 10.8, clampf(speed / 80.0, 0.0, 1.0))
-			height = lerpf(2.9, 4.2, clampf(speed / 80.0, 0.0, 1.0))
+			dist = lerpf(7.4, 10.8, clampf(speed / HoverCar.SPEED_LIMIT, 0.0, 1.0))
+			height = lerpf(2.9, 4.2, clampf(speed / HoverCar.SPEED_LIMIT, 0.0, 1.0))
 			if player.airborne:
 				dist += 1.3
 				height += 0.8
-			target_fov = 70.0 + clampf(speed / 85.0, 0.0, 1.0) * 14.0
+			target_fov = 70.0 + clampf(speed / HoverCar.SPEED_LIMIT, 0.0, 1.0) * 14.0
 			if player.boosting:
 				target_fov += 5.0
 	var look := player.global_position + Vector3.UP * look_up - back * look_ahead

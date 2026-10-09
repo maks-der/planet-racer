@@ -123,7 +123,7 @@ func _refresh() -> void:
 	var kmh := car.speed_mps() * 3.6
 	speed_label.text = str(int(round(kmh)))
 	if _speed_mat:
-		var rush := Util.smoothstep(55.0, 108.0, car.speed_mps())
+		var rush := Util.smoothstep(40.0, HoverCar.SPEED_LIMIT * 0.75, car.speed_mps())
 		_speed_mat.set_shader_parameter("intensity", rush)
 	boost_bar.value = car.boost
 	if hp_bar:
