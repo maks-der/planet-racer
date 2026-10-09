@@ -19,14 +19,15 @@ var yaw := 0.0
 var air_pitch := 0.0
 var air_roll := 0.0
 var boost := 100.0
+var hp := 100.0
+const HP_MAX := 100.0
 var airborne := false
 var left_pad := false
 var drifting := false
 var boosting := false
 var controls_enabled := true
-var wrecked := false
 var last_steer := 0.0
-const CRASH_SPEED := 28.0
+var fix_flash := 0.0
 const SLOPE_LIMIT := 0.5
 const NOSE_AHEAD := 1.95
 
@@ -62,6 +63,9 @@ var _arc_to := Vector3.ZERO
 var _arc2_live := false
 var _arc2_from := Vector3.ZERO
 var _arc2_to := Vector3.ZERO
+var _hit_speed := 0.0
+var _hit_decel := 0.0
+var _hull_smoke: GPUParticles3D
 
 
 func _ready() -> void:
@@ -73,18 +77,39 @@ func _ready() -> void:
 	_setup_audio()
 
 
-func notify_impact(impact: float) -> void:
-	if wrecked or ai or smoke_drive or impact < CRASH_SPEED:
+func note_collision(speed: float, decel: float) -> void:
+	if ai or smoke_drive or decel < 9.0:
 		return
-	wrecked = true
-	controls_enabled = false
-	velocity = Vector3.ZERO
-	world.wreck_player(global_position)
+	if decel > _hit_decel:
+		_hit_decel = decel
+		_hit_speed = speed
+
+
+func restore_hull() -> void:
+	var missing := HP_MAX - hp
+	hp = HP_MAX
+	if missing > 0.5:
+		fix_flash = 1.8
+
+
+func _crippled() -> bool:
+	return hp <= 0.0 and not ai
+
+
+func _apply_damage() -> void:
+	if _hit_decel <= 0.0:
+		return
+	var amount := _hit_decel * (0.55 + _hit_speed / 70.0)
+	_hit_decel = 0.0
+	_hit_speed = 0.0
+	hp = maxf(0.0, hp - amount)
 
 
 func _physics_process(dt: float) -> void:
-	if world == null or wrecked:
+	if world == null:
 		return
+	if fix_flash > 0.0:
+		fix_flash = maxf(0.0, fix_flash - dt)
 	_time += dt
 	var input := _read_input()
 	_steer_f = lerpf(_steer_f, float(input.steer), 1.0 - exp(-7.5 * dt))
@@ -133,11 +158,7 @@ func _physics_process(dt: float) -> void:
 		global_position += slice
 		var prev_v := velocity
 		_resolve_terrain(hover)
-		if wrecked:
-			return
 		world.resolve_solids(self)
-		if wrecked:
-			return
 		left -= 1.0
 		if left <= 0.0:
 			break
@@ -147,12 +168,8 @@ func _physics_process(dt: float) -> void:
 			travel -= slice
 	var lost := global_position.y < -30.0 or Vector2(global_position.x, global_position.z).length() > 20000.0
 	if lost:
-		if ai or smoke_drive or not controls_enabled:
-			world.recover_car(self)
-		else:
-			notify_impact(CRASH_SPEED)
-	if wrecked:
-		return
+		world.recover_car(self)
+	_apply_damage()
 	_apply_visual(normal, dt)
 	_update_fx(surface)
 
@@ -344,9 +361,8 @@ func _resolve_terrain(hover: float) -> void:
 			out = out.normalized()
 			var planar := Vector3(velocity.x, 0.0, velocity.z)
 			var approach := planar.dot(out)
-			notify_impact(maxf(0.0, -approach))
-			if wrecked:
-				return
+			if approach < 0.0:
+				note_collision(planar.length(), -approach)
 			global_position += out * 2.2
 			if approach < 0.0:
 				planar -= out * approach * 1.25
@@ -358,9 +374,7 @@ func _resolve_terrain(hover: float) -> void:
 		if global_position.y >= float_y - 0.02:
 			return
 		if velocity.y < -36.0:
-			notify_impact(-velocity.y)
-			if wrecked:
-				return
+			note_collision(speed_mps(), -velocity.y)
 		global_position.y = float_y
 		var into := n.dot(velocity)
 		if into < 0.0:
@@ -409,9 +423,13 @@ func _drive(dt: float, input: Dictionary, surface: Dictionary, height: float, ho
 	var forward_speed := flat.dot(fwd)
 	var side_speed := flat.dot(right)
 	var on_road := bool(surface.on_road)
-	boosting = bool(input.boost) and boost > 1.0
+	var crippled := _crippled()
+	boosting = bool(input.boost) and boost > 1.0 and not crippled
 	var accel := float(stats.accel) * (0.78 if not on_road else 1.0)
 	var cap := float(stats.boost_speed if boosting else stats.max_speed)
+	if crippled:
+		cap = minf(cap, 16.0)
+		accel *= 0.42
 	if not on_road:
 		cap *= 0.8
 	if boosting:
@@ -471,10 +489,13 @@ func _fly(dt: float, input: Dictionary) -> void:
 		air_pitch = move_toward(air_pitch, 0.0, dt * 0.4)
 	yaw -= float(input.steer) * float(stats.turn) * 0.72 * dt * invert
 	var nose := Basis.from_euler(Vector3(air_pitch, yaw, 0.0)) * Vector3(0, 0, -1)
-	boosting = bool(input.boost) and boost > 1.0
+	var crippled := _crippled()
+	boosting = bool(input.boost) and boost > 1.0 and not crippled
 	var desired_air := 0.0
 	if float(input.throttle) > 0.0:
 		desired_air = float(stats.accel) * 0.5
+	if crippled:
+		desired_air *= 0.35
 	if boosting:
 		desired_air += float(stats.accel) * 0.85
 		boost -= float(stats.boost_drain) * 0.65 * dt
@@ -486,6 +507,12 @@ func _fly(dt: float, input: Dictionary) -> void:
 	velocity += Util.right_from_yaw(yaw) * air_roll * 7.0 * dt
 	velocity.x -= velocity.x * 0.14 * dt
 	velocity.z -= velocity.z * 0.14 * dt
+	if crippled:
+		var glide := Vector3(velocity.x, 0.0, velocity.z)
+		if glide.length() > 16.0:
+			glide = glide.normalized() * 16.0
+			velocity.x = glide.x
+			velocity.z = glide.z
 	drifting = false
 
 
@@ -518,6 +545,8 @@ func _update_fx(surface: Dictionary) -> void:
 	if _dust:
 		var moving := (not airborne) and speed > 10.0 and controls_enabled
 		_dust.emitting = moving
+	if _hull_smoke:
+		_hull_smoke.emitting = _crippled()
 		if _dust_mat:
 			_dust_mat.color = Color(1.0, 0.45, 0.12, 0.55) if drifting or boosting else Color(0.75, 0.55, 0.32, 0.4)
 	var glow := 1.0 if boosting else 0.0
@@ -558,7 +587,7 @@ func _update_bolts() -> void:
 		return
 	if _bolt_mesh == null or world == null:
 		return
-	var moving := (not wrecked) and (not airborne) and controls_enabled and speed_mps() > 14.0
+	var moving := (not airborne) and controls_enabled and speed_mps() > 14.0
 	if not moving:
 		_arc_live = false
 		_arc2_live = false
@@ -723,6 +752,35 @@ func _bind_visuals() -> void:
 		quad.material = qmat
 		_dust.draw_pass_1 = quad
 		_dust.emitting = false
+	_hull_smoke = GPUParticles3D.new()
+	_hull_smoke.name = "HullSmoke"
+	_hull_smoke.amount = 48
+	_hull_smoke.lifetime = 1.35
+	_hull_smoke.position = Vector3(0.0, 0.55, 1.15)
+	_hull_smoke.visibility_aabb = AABB(Vector3(-4, -1, -4), Vector3(8, 8, 8))
+	_hull_smoke.emitting = false
+	var smoke_mat := ParticleProcessMaterial.new()
+	smoke_mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	smoke_mat.emission_sphere_radius = 0.25
+	smoke_mat.direction = Vector3(0, 1, 0.15)
+	smoke_mat.spread = 18.0
+	smoke_mat.initial_velocity_min = 0.8
+	smoke_mat.initial_velocity_max = 2.2
+	smoke_mat.gravity = Vector3(0, 0.4, 0)
+	smoke_mat.scale_min = 0.45
+	smoke_mat.scale_max = 1.35
+	smoke_mat.color = Color(0.22, 0.2, 0.18, 0.72)
+	_hull_smoke.process_material = smoke_mat
+	var smoke_quad := QuadMesh.new()
+	smoke_quad.size = Vector2(0.7, 0.7)
+	var smoke_draw := StandardMaterial3D.new()
+	smoke_draw.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	smoke_draw.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	smoke_draw.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	smoke_draw.albedo_color = Color(0.35, 0.32, 0.28, 0.8)
+	smoke_quad.material = smoke_draw
+	_hull_smoke.draw_pass_1 = smoke_quad
+	add_child(_hull_smoke)
 	if ai:
 		var label := Label3D.new()
 		label.text = display_name

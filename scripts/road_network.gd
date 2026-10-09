@@ -170,30 +170,6 @@ func _connect_network() -> void:
 		_try_edge(inner_ids[i], outer_ids[(i * 2) % outer_ids.size()], false, linked)
 	_try_edge(outer_ids[0], outer_ids[4], false, linked)
 	_try_edge(outer_ids[2], outer_ids[6], false, linked)
-	var shortcut_pairs := [
-		[0, 2], [2, 5], [4, 7], [1, 6], [3, 6], [0, 5],
-	]
-	for i in range(shortcut_pairs.size() - 1, 0, -1):
-		var j := _rng.randi_range(0, i)
-		var tmp: Array = shortcut_pairs[i]
-		shortcut_pairs[i] = shortcut_pairs[j]
-		shortcut_pairs[j] = tmp
-	var added := 0
-	for pair in shortcut_pairs:
-		if added >= 4:
-			break
-		var a: int = outer_ids[int(pair[0])]
-		var b: int = outer_ids[int(pair[1])]
-		if _try_edge(a, b, true, linked):
-			added += 1
-	if added < 3:
-		for i in outer_ids.size():
-			if added >= 4:
-				break
-			var a2: int = outer_ids[i]
-			var b2: int = outer_ids[(i + 3) % outer_ids.size()]
-			if _try_edge(a2, b2, true, linked):
-				added += 1
 
 
 func _try_edge(a: int, b: int, shortcut: bool, linked: Dictionary) -> bool:
@@ -264,9 +240,9 @@ func _relief_controls(a: Vector2, b: Vector2, shortcut: bool) -> PackedVector2Ar
 	var pts := PackedVector2Array()
 	pts.append(a)
 	var pos := a
-	var step := 24.0 if shortcut else 30.0
-	var reach := 64.0 if shortcut else 150.0
-	var bend := _rng.randf_range(-0.9, 0.9)
+	var step := 28.0 if shortcut else 42.0
+	var reach := 90.0 if shortcut else 260.0
+	var bend := _rng.randf_range(-1.05, 1.05)
 	var guard := 0
 	while pos.distance_to(b) > step * 1.55 and guard < 110:
 		guard += 1
@@ -276,23 +252,23 @@ func _relief_controls(a: Vector2, b: Vector2, shortcut: bool) -> PackedVector2Ar
 			break
 		var dir := remain / dist
 		var perp := Vector2(-dir.y, dir.x)
-		if dist > step * 4.5:
-			bend = clampf(bend + _rng.randf_range(-0.34, 0.34), -1.0, 1.0)
+		if dist > step * 5.0:
+			bend = clampf(bend + _rng.randf_range(-0.14, 0.14), -1.25, 1.25)
 		else:
-			bend = move_toward(bend, 0.0, 0.45)
-		var want := bend * reach * 0.62
+			bend = move_toward(bend, 0.0, 0.22)
+		var want := bend * reach * 0.92
 		var best := _clamp_map(pos + dir * step)
 		var best_cost := 1000000.0
-		var samples := 7 if shortcut else 11
+		var samples := 7 if shortcut else 13
 		for i in samples:
 			var off := lerpf(-reach, reach, float(i) / float(samples - 1))
 			var candidate := _clamp_map(pos + dir * step + perp * off)
 			var gained := dist - candidate.distance_to(b)
-			if gained < step * 0.36:
+			if gained < step * 0.28:
 				continue
 			var ahead := _clamp_map(candidate + dir * minf(step, dist * 0.35))
 			var cost := _ground_penalty(candidate) + _ground_penalty(ahead) * 0.65
-			cost += absf(off - want) * 0.05
+			cost += absf(off - want) * 0.16
 			if cost < best_cost:
 				best_cost = cost
 				best = candidate
@@ -305,18 +281,10 @@ func _relief_controls(a: Vector2, b: Vector2, shortcut: bool) -> PackedVector2Ar
 
 
 func _ground_penalty(p: Vector2) -> float:
-	var h := terrain.height_at(p.x, p.y)
 	var slope := terrain.slope_at(p.x, p.y)
-	var cost := 0.0
-	if h > 18.0:
-		cost += (h - 18.0) * 2.4
-	if h > 42.0:
-		cost += (h - 42.0) * 26.0
-	if slope > 0.055:
-		cost += (slope - 0.055) * 340.0
-	if slope > 0.15:
-		cost += 1600.0
-	return cost
+	if slope <= 0.1:
+		return 0.0
+	return (slope - 0.1) * 90.0
 
 
 func _smooth_relief(pts: PackedVector2Array) -> PackedVector2Array:
@@ -654,16 +622,16 @@ func _circuit_candidates() -> Array[Dictionary]:
 			arc.append(_find_edge(outer_ids[i], outer_ids[(i + 1) % 8]))
 		arc.append(diameter_b)
 		_add_cycle(out, seen, arc, outer_ids[2])
-	for edge_i in edges.size():
-		if not bool(edges[edge_i].shortcut):
-			continue
-		var edge: Dictionary = edges[edge_i]
-		var path: Dictionary = _shortest(int(edge.a), int(edge.b), edge_i)
-		if path.is_empty():
-			continue
-		var ids: Array = (path.edges as Array).duplicate()
-		ids.append(edge_i)
-		_add_cycle(out, seen, ids, int(edge.a))
+	for i in inner_ids.size():
+		var o0 := (i * 2) % outer_ids.size()
+		var wedge: Array = [
+			_find_edge(inner_ids[i], outer_ids[o0]),
+			_find_edge(outer_ids[o0], outer_ids[(o0 + 1) % outer_ids.size()]),
+			_find_edge(outer_ids[(o0 + 1) % outer_ids.size()], outer_ids[(o0 + 2) % outer_ids.size()]),
+			_find_edge(outer_ids[(o0 + 2) % outer_ids.size()], inner_ids[(i + 1) % inner_ids.size()]),
+			_find_edge(inner_ids[(i + 1) % inner_ids.size()], inner_ids[i]),
+		]
+		_add_cycle(out, seen, wedge, inner_ids[i])
 	return out
 
 
@@ -855,7 +823,7 @@ func _finalize_race(data: Dictionary, race_name: String, kind: String) -> Dictio
 	var laps := 1
 	if circuit:
 		laps = 3 if length < 1500.0 else 2
-	var spacing := 78.0 if length > 1100.0 else 58.0
+	var spacing := 156.0 if length > 1100.0 else 116.0
 	var cps := PackedVector3Array()
 	var cp_dist := PackedFloat32Array()
 	cps.append(pts[0])

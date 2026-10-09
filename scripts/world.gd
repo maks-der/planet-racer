@@ -31,15 +31,13 @@ var wasteland
 var camera_mode := 0
 var _snap_camera := false
 var storm_level := 0.0
-var run_over := false
 var port_position := Vector3.ZERO
 var port_yaw := 0.0
+var fix_stations: Array[Vector3] = []
 var _sky_mat: ShaderMaterial
 var _storm_fx: GPUParticles3D
 var _wind_fx: GPUParticles3D
 var _storm_flash := 0.0
-var _wreck_light: OmniLight3D
-var _wreck_age := -1.0
 var _roads_done := false
 var _finish_until := 0
 
@@ -82,13 +80,16 @@ func _ready() -> void:
 		terrain.write_rows(z, mini(z + band, TerrainField.RES))
 		arrival.set_progress(0.08 + 0.36 * float(z) / float(TerrainField.RES), "MAPPING THE DUNES")
 		await get_tree().process_frame
-	arrival.set_progress(0.46, "THREADING THE ROAD NETWORK")
+	arrival.set_progress(0.46, "LAYING THE RACE ROADS")
 	var field := terrain
 	var seed := GameState.world_seed
 	_roads_done = false
 	WorkerThreadPool.add_task(func() -> void:
 		var net := RoadNetwork.new()
 		net.generate(field, seed)
+		call_deferred("_mark_highlands")
+		field.raise_highlands()
+		field.cut_road_canyons(net.edges)
 		call_deferred("_finish_roads", net)
 	)
 	while not _roads_done:
@@ -105,6 +106,7 @@ func _ready() -> void:
 	_gate_root.name = "Gates"
 	add_child(_gate_root)
 	_spawn_beacons()
+	_spawn_fix_stations()
 	_build_spaceport()
 	_spawn_player()
 	_spawn_ambient()
@@ -145,6 +147,11 @@ func _ready() -> void:
 		_run_smoke()
 
 
+func _mark_highlands() -> void:
+	if arrival != null:
+		arrival.set_progress(0.48, "CUTTING CANYONS THROUGH THE HIGHLANDS")
+
+
 func _finish_roads(net: RoadNetwork) -> void:
 	roads = net
 	_roads_done = true
@@ -172,67 +179,7 @@ func place_car(car: HoverCar, pos: Vector3, dir: Vector3, speed: float) -> void:
 	car.global_transform = Transform3D(Basis.from_euler(Vector3(0.0, car.yaw, 0.0)), car.global_position)
 
 
-func wreck_player(at: Vector3) -> void:
-	if run_over:
-		return
-	run_over = true
-	if race.active or race.started:
-		for bot in bots:
-			bot.controls_enabled = false
-			bot.velocity = Vector3.ZERO
-	player.wrecked = true
-	player.controls_enabled = false
-	player.visible = false
-	player.velocity = Vector3.ZERO
-	_spawn_explosion(at)
-	if hud:
-		hud.show_game_over()
-
-
-func _spawn_explosion(at: Vector3) -> void:
-	var boom := GPUParticles3D.new()
-	boom.one_shot = true
-	boom.explosiveness = 0.92
-	boom.amount = 110
-	boom.lifetime = 1.15
-	boom.visibility_aabb = AABB(Vector3(-12, -6, -12), Vector3(24, 18, 24))
-	var mat := ParticleProcessMaterial.new()
-	mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
-	mat.emission_sphere_radius = 0.6
-	mat.direction = Vector3(0, 1, 0)
-	mat.spread = 80.0
-	mat.initial_velocity_min = 6.0
-	mat.initial_velocity_max = 16.0
-	mat.gravity = Vector3(0, -6.0, 0)
-	mat.scale_min = 0.6
-	mat.scale_max = 2.4
-	mat.color = Color(1.0, 0.45, 0.12, 0.9)
-	boom.process_material = mat
-	var quad := QuadMesh.new()
-	quad.size = Vector2(0.8, 0.8)
-	var qmat := StandardMaterial3D.new()
-	qmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	qmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	qmat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	qmat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	qmat.albedo_color = Color(1.0, 0.55, 0.2, 0.85)
-	quad.material = qmat
-	boom.draw_pass_1 = quad
-	add_child(boom)
-	boom.global_position = at + Vector3(0, 0.8, 0)
-	boom.emitting = true
-	_wreck_light = OmniLight3D.new()
-	add_child(_wreck_light)
-	_wreck_light.global_position = at + Vector3(0, 1.5, 0)
-	_wreck_light.light_color = Color(1.0, 0.46, 0.16)
-	_wreck_light.light_energy = 10.0
-	_wreck_light.omni_range = 36.0
-	_wreck_age = 0.0
-
-
 func recover_car(car: HoverCar) -> void:
-	if car.wrecked or run_over:
-		return
 	if race.active and race.started:
 		race.respawn(car)
 		return
@@ -268,47 +215,6 @@ func start_race(index: int) -> void:
 	race.begin(self, index, def, player, race_bots)
 	if hud:
 		hud.dismiss_menus()
-
-
-func restore_at_port() -> void:
-	if player == null:
-		return
-	run_over = false
-	player.wrecked = false
-	player.visible = true
-	player.boost = 100.0
-	player.controls_enabled = true
-	stop_race()
-	var fwd := Util.forward_from_yaw(port_yaw)
-	var right := Util.right_from_yaw(port_yaw)
-	var spawn := port_position + right * 10.0 + fwd * 2.0 + Vector3(0, 0.4, 0)
-	place_car(player, spawn, fwd, 0.0)
-	safe_pos = player.global_position
-	safe_yaw = player.yaw
-	_snap_camera = true
-	_clear_finish_hold()
-	if hud:
-		hud.hide_game_over()
-		hud._refresh()
-
-
-func restart_wrecked_race() -> void:
-	if player == null:
-		return
-	var index := race.race_index
-	if index < 0:
-		restore_at_port()
-		return
-	run_over = false
-	player.wrecked = false
-	player.visible = true
-	player.boost = 100.0
-	player.controls_enabled = true
-	_snap_camera = true
-	if hud:
-		hud.hide_game_over()
-	stop_race()
-	start_race(index)
 
 
 func stop_race() -> void:
@@ -356,18 +262,19 @@ func retry_race() -> void:
 
 
 func _physics_process(dt: float) -> void:
-	if player == null or run_over:
+	if player == null:
 		return
 	_separate_cars()
+	_heal_at_stations()
 	if race.active:
 		var was_finished := race.finished
 		race.tick(dt)
 		_highlight_gate()
 		if race.just_finished and not was_finished:
 			race.just_finished = false
-			if hud and not run_over:
+			if hud:
 				_begin_finish_slowmo()
-		if Input.is_action_just_pressed("reset") and race.started and not race.finished and not run_over:
+		if Input.is_action_just_pressed("reset") and race.started and not race.finished:
 			race.respawn(player)
 	else:
 		_update_prompt()
@@ -394,7 +301,7 @@ func _process(dt: float) -> void:
 	if _finish_until > 0 and Time.get_ticks_msec() >= _finish_until and not get_tree().paused:
 		_finish_until = 0
 		Engine.time_scale = 1.0
-		if hud and not run_over:
+		if hud:
 			hud.show_results()
 		get_tree().paused = true
 	_update_storm(dt)
@@ -625,6 +532,145 @@ func _spawn_beacons() -> void:
 		label.modulate = tint
 
 
+func _spawn_fix_stations() -> void:
+	var root := Node3D.new()
+	root.name = "FixStations"
+	add_child(root)
+	var spacing := 2400.0
+	var min_gap := 900.0
+	var placed: Array[Vector2] = []
+	for edge in roads.edges:
+		var pts: PackedVector3Array = edge.points
+		if pts.size() < 2:
+			continue
+		var walked := 500.0
+		var cursor := 0.0
+		for i in range(1, pts.size()):
+			cursor += pts[i - 1].distance_to(pts[i])
+			if cursor < walked:
+				continue
+			walked = cursor + spacing
+			var dir := pts[i] - pts[i - 1]
+			dir.y = 0.0
+			if dir.length_squared() < 1.0:
+				continue
+			dir = dir.normalized()
+			var side := dir.cross(Vector3.UP)
+			if side.length_squared() < 0.01:
+				continue
+			side = side.normalized()
+			var spot := pts[i] + side * 16.0
+			var flat := Vector2(spot.x, spot.z)
+			if flat.length() > TerrainField.HALF * 0.88:
+				continue
+			if terrain.slope_at(spot.x, spot.z) > 0.28:
+				continue
+			var crowded := false
+			for other in placed:
+				if flat.distance_to(other) < min_gap:
+					crowded = true
+					break
+			if crowded:
+				continue
+			for beacon in beacon_positions:
+				if flat.distance_to(Vector2(beacon.x, beacon.z)) < 160.0:
+					crowded = true
+					break
+			if crowded:
+				continue
+			var y := float(sample_surface(spot).height)
+			var pos := Vector3(spot.x, y, spot.z)
+			_build_fix_arch(root, pos, dir, side)
+			fix_stations.append(pos)
+			placed.append(flat)
+
+
+func _build_fix_arch(root: Node3D, pos: Vector3, dir: Vector3, side: Vector3) -> void:
+	var holder := Node3D.new()
+	holder.position = pos
+	holder.basis = Basis(side, Vector3.UP, -dir)
+	root.add_child(holder)
+	var tint := Color(0.28, 0.95, 0.48)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = tint
+	mat.emission_enabled = true
+	mat.emission = tint
+	mat.emission_energy_multiplier = 2.2
+	var post := CylinderMesh.new()
+	post.top_radius = 0.28
+	post.bottom_radius = 0.34
+	post.height = 5.2
+	for x in [-8.0, 8.0]:
+		var pole := MeshInstance3D.new()
+		pole.mesh = post
+		pole.position = Vector3(x, 2.6, 0.0)
+		pole.material_override = mat
+		holder.add_child(pole)
+	var bar := BoxMesh.new()
+	bar.size = Vector3(16.6, 0.32, 0.42)
+	var beam := MeshInstance3D.new()
+	beam.mesh = bar
+	beam.position = Vector3(0.0, 5.15, 0.0)
+	beam.material_override = mat
+	holder.add_child(beam)
+	var rib := BoxMesh.new()
+	rib.size = Vector3(0.22, 1.15, 0.22)
+	for x in [-6.2, -3.1, 3.1, 6.2]:
+		var brace := MeshInstance3D.new()
+		brace.mesh = rib
+		brace.position = Vector3(x, 4.55, 0.0)
+		brace.material_override = mat
+		holder.add_child(brace)
+	var kiosk_mesh := BoxMesh.new()
+	kiosk_mesh.size = Vector3(2.4, 2.2, 1.6)
+	var kiosk := MeshInstance3D.new()
+	kiosk.mesh = kiosk_mesh
+	kiosk.position = Vector3(11.2, 1.1, 0.0)
+	var kiosk_mat := StandardMaterial3D.new()
+	kiosk_mat.albedo_color = Color(0.08, 0.16, 0.12)
+	kiosk_mat.emission_enabled = true
+	kiosk_mat.emission = tint
+	kiosk_mat.emission_energy_multiplier = 0.35
+	kiosk.material_override = kiosk_mat
+	holder.add_child(kiosk)
+	var pad_mesh := BoxMesh.new()
+	pad_mesh.size = Vector3(18.0, 0.08, 10.0)
+	var pad := MeshInstance3D.new()
+	pad.mesh = pad_mesh
+	pad.position = Vector3(1.5, 0.04, 0.0)
+	var pad_mat := StandardMaterial3D.new()
+	pad_mat.albedo_color = Color(0.12, 0.22, 0.16)
+	pad.material_override = pad_mat
+	holder.add_child(pad)
+	var sign := Label3D.new()
+	sign.text = "FIX"
+	sign.font_size = 96
+	sign.position = Vector3(0.0, 5.7, 0.0)
+	sign.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	sign.modulate = tint
+	sign.outline_size = 12
+	sign.pixel_size = 0.01
+	holder.add_child(sign)
+	var lamp := OmniLight3D.new()
+	lamp.light_color = tint
+	lamp.light_energy = 2.4
+	lamp.omni_range = 18.0
+	lamp.position = Vector3(0.0, 4.6, 0.0)
+	holder.add_child(lamp)
+
+
+func _heal_at_stations() -> void:
+	if player == null or player.hp >= HoverCar.HP_MAX - 0.05:
+		return
+	var flat := Vector2(player.global_position.x, player.global_position.z)
+	for station in fix_stations:
+		if absf(player.global_position.y - station.y) > 6.0:
+			continue
+		if flat.distance_to(Vector2(station.x, station.z)) <= 7.5:
+			player.restore_hull()
+			return
+
+
 func _build_gates(def: Dictionary) -> void:
 	var cps: PackedVector3Array = def.checkpoints
 	for i in cps.size():
@@ -729,7 +775,13 @@ func _separate_cars() -> void:
 			delta.y = 0.0
 			var dist := delta.length()
 			if dist < 2.65 and dist > 0.001:
-				var push := delta / dist * (2.65 - dist) * 0.55
+				var n := delta / dist
+				var rel := Vector2(b.velocity.x - a.velocity.x, b.velocity.z - a.velocity.z)
+				var closing := -rel.dot(Vector2(n.x, n.z))
+				if closing > 9.0:
+					a.note_collision(a.speed_mps(), closing * 0.5)
+					b.note_collision(b.speed_mps(), closing * 0.5)
+				var push := n * (2.65 - dist) * 0.55
 				a.global_position -= push
 				b.global_position += push
 				a.velocity -= Vector3(push.x, 0, push.z) * 6.0
@@ -770,9 +822,7 @@ func resolve_solids(car: HoverCar) -> void:
 				var planar := Vector3(car.velocity.x, 0.0, car.velocity.z)
 				var approach := planar.dot(out)
 				if approach < 0.0:
-					car.notify_impact(-approach)
-					if car.wrecked:
-						return
+					car.note_collision(planar.length(), -approach)
 					planar -= out * approach * 1.35
 					car.velocity.x = planar.x
 					car.velocity.z = planar.z
@@ -878,12 +928,6 @@ func _update_storm(dt: float) -> void:
 	if _wind_fx and cam:
 		_wind_fx.global_position = cam.global_position + Vector3(0, -0.4, 0)
 		_wind_fx.amount_ratio = lerpf(0.45, 1.0, storm_level)
-	if _wreck_age >= 0.0 and _wreck_light:
-		_wreck_age += dt
-		_wreck_light.light_energy = maxf(0.0, 10.0 - _wreck_age * 7.0)
-		if _wreck_age > 1.6:
-			_wreck_light.queue_free()
-			_wreck_light = null
 
 
 func _update_camera(dt: float) -> void:
@@ -899,35 +943,35 @@ func _update_camera(dt: float) -> void:
 	var lag := 3.4
 	match camera_mode:
 		1:
-			dist = lerpf(20.0, 28.0, clampf(speed / 80.0, 0.0, 1.0))
-			height = lerpf(8.0, 13.0, clampf(speed / 80.0, 0.0, 1.0))
-			look_ahead = 9.0
-			look_up = 1.2
-			target_fov = 62.0 + clampf(speed / 90.0, 0.0, 1.0) * 10.0
-			lag = 2.4
+			dist = lerpf(13.5, 18.5, clampf(speed / 80.0, 0.0, 1.0))
+			height = lerpf(5.2, 8.2, clampf(speed / 80.0, 0.0, 1.0))
+			look_ahead = 6.5
+			look_up = 1.0
+			target_fov = 64.0 + clampf(speed / 90.0, 0.0, 1.0) * 8.0
+			lag = 2.6
 		2:
-			var seat := player.global_transform * Transform3D(Basis.IDENTITY, Vector3(0.0, 1.2, -0.25))
+			var seat := player.global_transform * Transform3D(Basis.IDENTITY, Vector3(0.0, 0.9, -0.7))
 			var blend_hood := 1.0 if _snap_camera else 1.0 - exp(-14.0 * dt)
 			_snap_camera = false
 			cam.global_transform = cam.global_transform.interpolate_with(seat, blend_hood)
-			cam.fov = lerpf(cam.fov, 80.0, blend_hood)
+			cam.fov = lerpf(cam.fov, 84.0, blend_hood)
 			return
 		3:
-			dist = 4.1
-			height = 1.55
-			look_ahead = 7.0
-			look_up = 0.7
-			target_fov = 82.0
-			lag = 8.0
+			dist = 2.7
+			height = 1.15
+			look_ahead = 5.0
+			look_up = 0.55
+			target_fov = 86.0
+			lag = 9.0
 		_:
-			dist = lerpf(11.0, 16.5, clampf(speed / 80.0, 0.0, 1.0))
-			height = lerpf(4.2, 6.4, clampf(speed / 80.0, 0.0, 1.0))
+			dist = lerpf(7.4, 10.8, clampf(speed / 80.0, 0.0, 1.0))
+			height = lerpf(2.9, 4.2, clampf(speed / 80.0, 0.0, 1.0))
 			if player.airborne:
-				dist += 2.2
-				height += 1.4
-			target_fov = 68.0 + clampf(speed / 85.0, 0.0, 1.0) * 18.0
+				dist += 1.3
+				height += 0.8
+			target_fov = 70.0 + clampf(speed / 85.0, 0.0, 1.0) * 14.0
 			if player.boosting:
-				target_fov += 6.0
+				target_fov += 5.0
 	var look := player.global_position + Vector3.UP * look_up - back * look_ahead
 	var desired := player.global_position + back * dist + Vector3.UP * height
 	if overview:
@@ -965,13 +1009,17 @@ func _run_smoke() -> void:
 	var far := Vector3(TerrainField.HALF + 700.0, 30.0, 180.0)
 	var waste_h := terrain.height_at(far.x, far.z)
 	var waste_storm := terrain.storm_factor(far.x, far.z)
-	print("SMOKE speed=%.1f y=%.2f wrecked=%s races=%d waste_h=%.1f storm=%.2f" % [speed, player.global_position.y, player.wrecked, roads.races.size(), waste_h, waste_storm])
+	print("SMOKE speed=%.1f y=%.2f hp=%.0f races=%d fixes=%d waste_h=%.1f storm=%.2f" % [speed, player.global_position.y, player.hp, roads.races.size(), fix_stations.size(), waste_h, waste_storm])
 	if waste_h < 0.5 or waste_storm < 0.8:
 		push_error("Wasteland did not continue past the map")
 		get_tree().quit(1)
 		return
 	for def in roads.races:
 		print(" RACE ", def.name, " ", def.type, " len=%.0f cps=%d laps=%d" % [def.length, def.checkpoints.size(), def.laps])
+	if fix_stations.size() < 4:
+		push_error("Fix stations missing")
+		get_tree().quit(1)
+		return
 	if player.global_position.y < 0.0 or speed < 8.0 or roads.races.size() != 8:
 		push_error("Smoke test failed")
 		get_tree().quit(1)

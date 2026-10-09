@@ -38,7 +38,7 @@ func _ready() -> void:
 	var body := Label.new()
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.custom_minimum_size = Vector2(440, 70)
-	body.text = "Each New Game builds a new desert. Hit a wall, rock, or the ground too fast and the car is wrecked, then returned to the port."
+	body.text = "Each New Game builds a new desert. Hard hits drain the hull. At zero the car limps and smokes until you drive through a fix arch."
 	body.add_theme_color_override("font_color", Color(0.82, 0.88, 0.92))
 	column.add_child(body)
 

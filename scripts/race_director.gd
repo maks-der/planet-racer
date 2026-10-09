@@ -167,8 +167,6 @@ func _watch_track(dt: float) -> void:
 
 
 func respawn(car: HoverCar) -> void:
-	if car.wrecked:
-		return
 	var cps: PackedVector3Array = race.checkpoints
 	if cps.is_empty():
 		return

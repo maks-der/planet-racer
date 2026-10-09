@@ -4,12 +4,16 @@ extends CanvasLayer
 var world
 var speed_label: Label
 var boost_bar: ProgressBar
+var race_panel: PanelContainer
 var race_label: Label
+var race_meta: Label
+var prompt_panel: PanelContainer
 var prompt_label: Label
 var banner: Label
 var wrong_label: Label
 var hint_label: Label
 var seed_label: Label
+var standings_panel: PanelContainer
 var standings: Label
 var pause_panel: Control
 var results_panel: Control
@@ -26,9 +30,9 @@ var _paused := false
 var view_label: Label
 var view_time := 0.0
 var storm_label: Label
-var game_over_panel: Control
-var wreck_note: Label
-var wreck_retry: Button
+var hull_label: Label
+var hp_bar: ProgressBar
+var _hp_fill: StyleBoxFlat
 var map_panel: Control
 var _mission_starts: Array[Button] = []
 var _guide_note: Label
@@ -49,7 +53,6 @@ func bind(host) -> void:
 	add_child(root)
 	_build_drive_ui(root)
 	_build_pause(root)
-	_build_game_over(root)
 	_build_results(root)
 	_build_missions(root)
 
@@ -72,7 +75,7 @@ func _process(_dt: float) -> void:
 			view_label.visible = false
 	if Input.is_action_just_pressed("pause"):
 		_on_escape()
-	elif _guide_pressed() and _garage == null and not _paused and not world.run_over and not results_panel.visible and not game_over_panel.visible:
+	elif _guide_pressed() and _garage == null and not _paused and not results_panel.visible:
 		_toggle_guide()
 
 
@@ -123,10 +126,27 @@ func _refresh() -> void:
 		var rush := Util.smoothstep(55.0, 108.0, car.speed_mps())
 		_speed_mat.set_shader_parameter("intensity", rush)
 	boost_bar.value = car.boost
+	if hp_bar:
+		hp_bar.value = car.hp
+		if _hp_fill:
+			_hp_fill.bg_color = Color(0.95, 0.28, 0.18) if car.hp < 30.0 else Color(0.28, 0.92, 0.48)
+	if hull_label:
+		if car.fix_flash > 0.0:
+			hull_label.visible = true
+			hull_label.text = "HULL RESTORED"
+			hull_label.add_theme_color_override("font_color", Color(0.45, 1.0, 0.62))
+		elif car.hp <= 0.0:
+			hull_label.visible = true
+			hull_label.text = "HULL DOWN  —  DRIVE THROUGH A FIX ARCH"
+			hull_label.add_theme_color_override("font_color", Color(1.0, 0.45, 0.28))
+		else:
+			hull_label.visible = false
 	seed_label.text = "VERMILION WASTES   SEED %06d" % GameState.world_seed
 	var race = world.race
 	if race.active:
 		prompt_label.text = ""
+		if prompt_panel:
+			prompt_panel.visible = false
 		if not race.started:
 			banner.text = str(maxi(ceili(race.countdown), 1))
 			banner.visible = true
@@ -138,10 +158,11 @@ func _refresh() -> void:
 		wrong_label.visible = car.wrong_way and race.started and not race.finished
 		var laps := ""
 		if str(race.race.type) == "circuit":
-			laps = "   LAP %d/%d" % [mini(car.lap + 1, int(race.race.laps)), int(race.race.laps)]
+			laps = "LAP %d/%d    " % [mini(car.lap + 1, int(race.race.laps)), int(race.race.laps)]
 		var cp := "%d/%d" % [mini(car.cp_index, race.race.checkpoints.size()), race.race.checkpoints.size()]
-		race_label.text = "%s\n%s%s\nCP %s    %s" % [
-			str(race.race.name).to_upper(),
+		race_label.text = str(race.race.name).to_upper()
+		race_meta.visible = true
+		race_meta.text = "%s    %sCP %s    %s" % [
 			Util.place_text(race.player_place()),
 			laps,
 			cp,
@@ -153,18 +174,22 @@ func _refresh() -> void:
 			var mark := ">" if racer == car else " "
 			board.append("%s %d  %s" % [mark, i + 1, racer.display_name])
 		standings.text = "\n".join(board)
-		standings.visible = true
+		standings_panel.visible = true
 	else:
 		banner.visible = false
 		wrong_label.visible = false
-		standings.visible = false
+		standings_panel.visible = false
+		race_label.text = "FREE ROAM"
 		if world.near_race >= 0:
 			var def: Dictionary = world.roads.races[world.near_race]
 			prompt_label.text = "F  —  START  %s\n%s" % [str(def.name).to_upper(), def.blurb]
-			race_label.text = "FREE ROAM"
+			race_meta.visible = false
 		else:
 			prompt_label.text = ""
-			race_label.text = "FREE ROAM\nDrive the road network or press M"
+			race_meta.visible = true
+			race_meta.text = "Drive the road network or press M"
+	if prompt_panel:
+		prompt_panel.visible = prompt_label.text != ""
 	if storm_label:
 		var storm := float(world.storm_level)
 		storm_label.visible = storm > 0.28
@@ -175,43 +200,7 @@ func _refresh() -> void:
 	_update_preview()
 
 
-func show_game_over() -> void:
-	if game_over_panel:
-		game_over_panel.visible = true
-	if pause_panel:
-		pause_panel.visible = false
-	if results_panel:
-		results_panel.visible = false
-	_set_guide(false)
-	if wreck_note and world:
-		var racing: bool = bool(world.race.active or world.race.started or world.gates.size() > 0)
-		wreck_note.text = "The car is wrecked.\nRestart the race, or return to the port." if racing else "The car is wrecked.\nIt will be moved back to the port."
-		if wreck_retry:
-			wreck_retry.visible = racing
-	_paused = false
-	get_tree().paused = false
-
-
-func hide_game_over() -> void:
-	if game_over_panel:
-		game_over_panel.visible = false
-
-
-func _return_to_port() -> void:
-	get_tree().paused = false
-	if world:
-		world.restore_at_port()
-
-
-func _restart_race() -> void:
-	get_tree().paused = false
-	if world:
-		world.restart_wrecked_race()
-
-
 func _on_escape() -> void:
-	if world != null and world.run_over:
-		return
 	if _garage != null:
 		_garage.queue_free()
 		_garage = null
@@ -250,7 +239,7 @@ func _build_drive_ui(root: Control) -> void:
 	speed_box.position = Vector2(28, 0)
 	speed_box.anchor_top = 1.0
 	speed_box.anchor_bottom = 1.0
-	speed_box.offset_top = -150
+	speed_box.offset_top = -198
 	speed_box.offset_bottom = -28
 	speed_box.offset_left = 28
 	speed_box.offset_right = 250
@@ -287,10 +276,37 @@ func _build_drive_ui(root: Control) -> void:
 	boost_name.add_theme_font_size_override("font_size", 12)
 	boost_name.add_theme_color_override("font_color", Color(1.0, 0.62, 0.22))
 	vb.add_child(boost_name)
+	hp_bar = ProgressBar.new()
+	hp_bar.max_value = HoverCar.HP_MAX
+	hp_bar.value = HoverCar.HP_MAX
+	hp_bar.show_percentage = false
+	hp_bar.custom_minimum_size = Vector2(180, 16)
+	var hp_bg := StyleBoxFlat.new()
+	hp_bg.bg_color = Color(0.08, 0.09, 0.11)
+	hp_bg.set_corner_radius_all(2)
+	_hp_fill = StyleBoxFlat.new()
+	_hp_fill.bg_color = Color(0.28, 0.92, 0.48)
+	_hp_fill.set_corner_radius_all(2)
+	hp_bar.add_theme_stylebox_override("background", hp_bg)
+	hp_bar.add_theme_stylebox_override("fill", _hp_fill)
+	vb.add_child(hp_bar)
+	var hp_name := Label.new()
+	hp_name.text = "HULL"
+	hp_name.add_theme_font_size_override("font_size", 12)
+	hp_name.add_theme_color_override("font_color", Color(0.45, 0.95, 0.62))
+	vb.add_child(hp_name)
+
+	hull_label = Label.new()
+	hull_label.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	hull_label.position = Vector2(28, -236)
+	hull_label.size = Vector2(420, 28)
+	hull_label.add_theme_font_size_override("font_size", 16)
+	hull_label.visible = false
+	root.add_child(hull_label)
 
 	view_label = Label.new()
 	view_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	view_label.position = Vector2(-120, 108)
+	view_label.position = Vector2(-120, 96)
 	view_label.size = Vector2(240, 32)
 	view_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	view_label.add_theme_font_size_override("font_size", 18)
@@ -304,18 +320,36 @@ func _build_drive_ui(root: Control) -> void:
 	seed_label.add_theme_color_override("font_color", Color(0.75, 0.9, 1, 0.85))
 	root.add_child(seed_label)
 
+	race_panel = PanelContainer.new()
+	race_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	race_panel.offset_left = -250
+	race_panel.offset_top = 12
+	race_panel.offset_right = 250
+	race_panel.offset_bottom = 84
+	race_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	race_panel.add_theme_stylebox_override("panel", UiStyle.hud_panel())
+	root.add_child(race_panel)
+	var race_box := VBoxContainer.new()
+	race_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	race_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	race_box.add_theme_constant_override("separation", 0)
+	race_panel.add_child(race_box)
 	race_label = Label.new()
-	race_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	race_label.position = Vector2(-180, 18)
-	race_label.size = Vector2(360, 90)
 	race_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	race_label.add_theme_font_size_override("font_size", 20)
 	race_label.add_theme_color_override("font_color", Color(0.9, 0.97, 1))
-	root.add_child(race_label)
+	race_label.text = "FREE ROAM"
+	race_box.add_child(race_label)
+	race_meta = Label.new()
+	race_meta.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	race_meta.add_theme_font_size_override("font_size", 15)
+	race_meta.add_theme_color_override("font_color", Color(0.7, 0.9, 0.96))
+	race_meta.text = "Drive the road network or press M"
+	race_box.add_child(race_meta)
 
 	storm_label = Label.new()
 	storm_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	storm_label.position = Vector2(-180, 112)
+	storm_label.position = Vector2(-180, 132)
 	storm_label.size = Vector2(360, 28)
 	storm_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	storm_label.add_theme_font_size_override("font_size", 18)
@@ -323,22 +357,45 @@ func _build_drive_ui(root: Control) -> void:
 	storm_label.visible = false
 	root.add_child(storm_label)
 
+	standings_panel = PanelContainer.new()
+	standings_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	standings_panel.offset_left = -236
+	standings_panel.offset_top = 12
+	standings_panel.offset_right = -16
+	standings_panel.offset_bottom = 168
+	standings_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	standings_panel.visible = false
+	standings_panel.add_theme_stylebox_override("panel", UiStyle.hud_panel())
+	root.add_child(standings_panel)
+	var order_box := VBoxContainer.new()
+	order_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	order_box.add_theme_constant_override("separation", 4)
+	standings_panel.add_child(order_box)
+	var order_title := Label.new()
+	order_title.text = "ORDER"
+	order_title.add_theme_font_size_override("font_size", 12)
+	order_title.add_theme_color_override("font_color", Color(0.55, 0.78, 0.86))
+	order_box.add_child(order_title)
 	standings = Label.new()
-	standings.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	standings.position = Vector2(-230, 18)
-	standings.size = Vector2(200, 160)
 	standings.add_theme_font_size_override("font_size", 16)
-	standings.visible = false
-	root.add_child(standings)
+	standings.add_theme_color_override("font_color", Color(0.9, 0.97, 1))
+	order_box.add_child(standings)
 
+	prompt_panel = PanelContainer.new()
+	prompt_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	prompt_panel.offset_left = -280
+	prompt_panel.offset_top = -196
+	prompt_panel.offset_right = 280
+	prompt_panel.offset_bottom = -112
+	prompt_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	prompt_panel.visible = false
+	prompt_panel.add_theme_stylebox_override("panel", UiStyle.hud_panel())
+	root.add_child(prompt_panel)
 	prompt_label = Label.new()
-	prompt_label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	prompt_label.position = Vector2(-260, -220)
-	prompt_label.size = Vector2(520, 70)
 	prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	prompt_label.add_theme_font_size_override("font_size", 20)
-	prompt_label.add_theme_color_override("font_color", Color(0.55, 1.0, 0.95))
-	root.add_child(prompt_label)
+	prompt_label.add_theme_font_size_override("font_size", 18)
+	prompt_label.add_theme_color_override("font_color", Color(0.62, 0.96, 0.94))
+	prompt_panel.add_child(prompt_label)
 
 	banner = Label.new()
 	banner.set_anchors_preset(Control.PRESET_CENTER)
@@ -438,7 +495,7 @@ func _build_track_preview(root: Control) -> void:
 func _update_preview() -> void:
 	if preview_panel == null or world == null:
 		return
-	var blocked := _paused or _map_open or game_over_panel.visible or results_panel.visible or mission_panel.visible
+	var blocked := _paused or _map_open or results_panel.visible or mission_panel.visible
 	var show := false
 	var def: Dictionary = {}
 	if not blocked and world.race.active and not world.race.started:
@@ -538,39 +595,6 @@ func _bake_map() -> void:
 			var col: Color = world.terrain.ground_color(wx, wz, h, normal, road)
 			img.set_pixel(x, y, col)
 	map_texture = ImageTexture.create_from_image(img)
-
-
-func _build_game_over(root: Control) -> void:
-	game_over_panel = _overlay(root)
-	game_over_panel.visible = false
-	var box := VBoxContainer.new()
-	box.set_anchors_preset(Control.PRESET_CENTER)
-	box.position = Vector2(-220, -150)
-	box.custom_minimum_size = Vector2(440, 400)
-	box.add_theme_constant_override("separation", 12)
-	game_over_panel.add_child(box)
-	var title := Label.new()
-	title.text = "CAR WRECKED"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 48)
-	title.add_theme_color_override("font_color", Color(1.0, 0.55, 0.28))
-	box.add_child(title)
-	wreck_note = Label.new()
-	var note := wreck_note
-	note.text = "The car is wrecked.\nIt will be moved back to the port."
-	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	note.add_theme_font_size_override("font_size", 18)
-	box.add_child(note)
-	wreck_retry = UiStyle.button("RESTART RACE", 440)
-	wreck_retry.visible = false
-	wreck_retry.pressed.connect(_restart_race)
-	box.add_child(wreck_retry)
-	var again := UiStyle.button("RETURN TO PORT", 440)
-	again.pressed.connect(_return_to_port)
-	box.add_child(again)
-	var menu := UiStyle.button("MAIN MENU", 440)
-	menu.pressed.connect(_to_menu)
-	box.add_child(menu)
 
 
 func _build_results(root: Control) -> void:

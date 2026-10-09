@@ -59,6 +59,10 @@ func _draw_map() -> void:
 	var a := center - Vector2(fwd.x, fwd.z) * 5.0 + Vector2(right.x, right.z) * 5.0
 	var b := center - Vector2(fwd.x, fwd.z) * 5.0 - Vector2(right.x, right.z) * 5.0
 	draw_colored_polygon(PackedVector2Array([tip, a, b]), Color(1, 1, 1))
+	for station in world.fix_stations:
+		var ms := _map_point(station, player, center, ppm)
+		if _on_map(ms):
+			draw_circle(ms, 3.2, Color(0.3, 0.95, 0.48))
 	var port: Vector3 = world.port_position
 	var mp_port := _map_point(port, player, center, ppm)
 	if _on_map(mp_port):
@@ -87,6 +91,8 @@ func _draw_world() -> void:
 	for i in world.beacon_positions.size():
 		var bp: Vector3 = world.beacon_positions[i]
 		draw_circle(_world_point(bp, origin, scale, half), 4.0, world.BOT_COLORS[i % world.BOT_COLORS.size()])
+	for station in world.fix_stations:
+		draw_circle(_world_point(station, origin, scale, half), 3.4, Color(0.3, 0.95, 0.48))
 	var port := _world_point(world.port_position, origin, scale, half)
 	draw_rect(Rect2(port - Vector2(5, 5), Vector2(10, 10)), Color(0.5, 0.95, 1.0))
 	for bot in world.bots:
@@ -169,6 +175,12 @@ func _draw_course(def: Dictionary, show_racers: bool) -> void:
 			draw_circle(cp, 5.5, Color(1.0, 0.78, 0.28))
 		else:
 			draw_circle(cp, 2.6, Color(0.55, 0.95, 1.0, 0.75))
+	var world_map = host.world
+	for station in world_map.fix_stations:
+		if station.x < min_x - 40.0 or station.x > max_x + 40.0 or station.z < min_z - 40.0 or station.z > max_z + 40.0:
+			continue
+		var fs := origin + Vector2((station.x - min_x) * scale, (max_z - station.z) * scale)
+		draw_circle(fs, 4.0, Color(0.3, 0.95, 0.48))
 	draw_rect(Rect2(start - Vector2(4, 4), Vector2(8, 8)), Color(0.95, 0.98, 1.0))
 	if str(def.type) != "circuit":
 		draw_rect(Rect2(last - Vector2(5, 5), Vector2(10, 10)), Color(1.0, 0.55, 0.2))

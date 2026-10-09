@@ -10,6 +10,8 @@ func _init() -> void:
 		terrain.generate(s)
 		var roads := RoadNetwork.new()
 		roads.generate(terrain, s)
+		terrain.raise_highlands()
+		terrain.cut_road_canyons(roads.edges)
 		tunnels += roads.tunnel_points
 		bridges += roads.bridge_points
 		print("SEED %d height %.1f..%.1f edges %d shortcuts %d tunnel_pts %d bridge_pts %d races %d" % [
@@ -22,6 +24,10 @@ func _init() -> void:
 			return
 		if roads.edges.size() < 12:
 			push_error("Road network too small")
+			quit(1)
+			return
+		if roads.shortcut_edges != 0:
+			push_error("Seed %d still has shortcut roads" % s)
 			quit(1)
 			return
 		var names := {}
@@ -47,8 +53,24 @@ func _init() -> void:
 			push_error("Road sample mismatch %.2f vs %.2f" % [sample.height, mid.y])
 			quit(1)
 			return
-		if roads.tunnel_points < 1 or roads.bridge_points < 1:
-			push_error("Seed %d missing tunnels or bridges" % s)
+		var canyon_hits := 0
+		for edge2 in roads.edges:
+			var epts: PackedVector3Array = edge2.points
+			for i in range(0, epts.size(), 6):
+				var nxt: Vector3 = epts[mini(i + 1, epts.size() - 1)] - epts[i]
+				var side := Vector2(-nxt.z, nxt.x)
+				if side.length_squared() < 0.01:
+					continue
+				side = side.normalized()
+				var at := Vector2(epts[i].x, epts[i].z) + side * 58.0
+				if terrain.height_at(at.x, at.y) > epts[i].y + 12.0:
+					canyon_hits += 1
+		if canyon_hits < 1:
+			push_error("Seed %d roads do not cut canyons through the highlands" % s)
+			quit(1)
+			return
+		if terrain.max_h < 40.0:
+			push_error("Seed %d is missing highlands" % s)
 			quit(1)
 			return
 	print("ALL GOOD tunnels=%d bridges=%d" % [tunnels, bridges])

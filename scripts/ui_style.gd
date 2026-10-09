@@ -28,6 +28,16 @@ static func panel() -> StyleBoxFlat:
 	return box
 
 
+static func hud_panel() -> StyleBoxFlat:
+	var box := panel()
+	box.bg_color = Color(0.02, 0.04, 0.07, 0.78)
+	box.content_margin_left = 16
+	box.content_margin_right = 16
+	box.content_margin_top = 8
+	box.content_margin_bottom = 8
+	return box
+
+
 static func button(text: String, width: float = 320.0) -> Button:
 	var b := Button.new()
 	b.text = text

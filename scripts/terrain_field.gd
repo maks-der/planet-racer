@@ -22,6 +22,7 @@ var _waste_ridge: FastNoiseLite
 var _biome: FastNoiseLite
 var _mesas: Array[Dictionary] = []
 var _canyons: Array[Dictionary] = []
+var _base_heights := PackedFloat32Array()
 
 
 func generate(seed: int) -> void:
@@ -30,8 +31,8 @@ func generate(seed: int) -> void:
 
 
 func begin(seed: int) -> void:
-	_dune = _noise(seed, 0.0018, 4)
-	_detail = _noise(seed + 11, 0.018, 3)
+	_dune = _perlin(seed, 0.0018, 4)
+	_detail = _perlin(seed + 11, 0.014, 3)
 	_ridge = _noise(seed + 23, 0.0016, 5)
 	_range = _noise(seed + 41, 0.00072, 2)
 	_mask = _noise(seed + 57, 0.0014, 2)
@@ -54,7 +55,7 @@ func write_rows(z0: int, z1: int) -> void:
 		for x in RES:
 			var wx := -HALF + float(x) * cell
 			var wz := -HALF + float(z) * cell
-			var h := _raw_height(wx, wz)
+			var h := _base_height(wx, wz)
 			heights[z * RES + x] = h
 			min_h = minf(min_h, h)
 			max_h = maxf(max_h, h)
@@ -322,7 +323,7 @@ func _build_features(seed: int) -> void:
 		})
 
 
-func _raw_height(x: float, z: float) -> float:
+func _base_height(x: float, z: float) -> float:
 	var w := region_weights(x, z)
 	var dune := _dune.get_noise_2d(x, z)
 	var detail := _detail.get_noise_2d(x, z)
@@ -330,31 +331,133 @@ func _raw_height(x: float, z: float) -> float:
 	var ripple := sin(x * 0.085 + z * 0.018) * sin(z * 0.11) * lerpf(0.15, 1.7, w.x)
 	var dune_h := 7.0 + dune * lerpf(9.0, 24.0, w.x) + broad * lerpf(7.0, 15.0, w.x) + ripple
 	var rock_h := 13.0 + broad * 9.0 + dune * 3.5 + detail * 1.2
-	var hill_h := 10.0 + broad * 20.0 + dune * 5.5 + detail * 2.4
+	var hill_h := 10.0 + broad * 16.0 + dune * 4.0 + detail * 1.6
 	var scrub_h := 6.2 + dune * 4.2 + detail * 0.7
 	var h := dune_h * w.x + rock_h * w.y + hill_h * w.z + scrub_h * w.w
 	var salt := Util.smoothstep(0.34, 0.78, _mask.get_noise_2d(x, z)) * (0.35 + w.w * 0.65)
 	h = lerpf(h, 2.4 + detail * 0.35, salt * 0.82)
+	return maxf(h, 0.35)
+
+
+func raise_highlands() -> void:
+	_base_heights = heights.duplicate()
+	for z in RES:
+		for x in RES:
+			var wx := -HALF + float(x) * cell
+			var wz := -HALF + float(z) * cell
+			var idx := z * RES + x
+			heights[idx] += _highland_lift(wx, wz)
+			min_h = minf(min_h, heights[idx])
+			max_h = maxf(max_h, heights[idx])
+
+
+func cut_road_canyons(edges: Array) -> void:
+	var high := heights.duplicate()
+	var best_d := PackedFloat32Array()
+	var best_y := PackedFloat32Array()
+	best_d.resize(RES * RES)
+	best_y.resize(RES * RES)
+	best_d.fill(100000.0)
+	var reach_m := 76.0
+	var reach := int(ceil(reach_m / cell)) + 1
+	var floor_r := 30.0
+	var wall := 42.0
+	for edge in edges:
+		var src: Dictionary = edge
+		var pts: PackedVector3Array = src.points
+		var kinds: PackedByteArray = src.kinds
+		for pi in pts.size():
+			var p: Vector3 = pts[pi]
+			var floor_y := p.y
+			if int(kinds[pi]) == 1 and not _base_heights.is_empty():
+				floor_y = _height_from(_base_heights, p.x, p.z)
+			var cx := int(round((p.x + HALF) / cell))
+			var cz := int(round((p.z + HALF) / cell))
+			for dz in range(-reach, reach + 1):
+				for dx in range(-reach, reach + 1):
+					var ix := cx + dx
+					var iz := cz + dz
+					if ix < 1 or iz < 1 or ix >= RES - 1 or iz >= RES - 1:
+						continue
+					var wx := -HALF + float(ix) * cell
+					var wz := -HALF + float(iz) * cell
+					var dist := Vector2(wx, wz).distance_to(Vector2(p.x, p.z))
+					if dist > reach_m:
+						continue
+					var idx := iz * RES + ix
+					if dist >= best_d[idx]:
+						continue
+					best_d[idx] = dist
+					best_y[idx] = floor_y
+	min_h = 1000.0
+	max_h = -1000.0
+	for i in heights.size():
+		var dist := best_d[i]
+		if dist > floor_r + wall:
+			min_h = minf(min_h, heights[i])
+			max_h = maxf(max_h, heights[i])
+			continue
+		var floor_y := best_y[i]
+		var cap := high[i]
+		if dist <= floor_r:
+			heights[i] = minf(cap, floor_y)
+			road_mask[i] = maxf(road_mask[i], 1.0)
+		else:
+			var u := (dist - floor_r) / wall
+			var s := u * u * (3.0 - 2.0 * u)
+			heights[i] = minf(cap, lerpf(floor_y, cap, s))
+			if u < 0.4:
+				road_mask[i] = maxf(road_mask[i], 1.0 - u)
+		min_h = minf(min_h, heights[i])
+		max_h = maxf(max_h, heights[i])
+	blend_border()
+
+
+func _highland_lift(x: float, z: float) -> float:
+	var fade := _border_fade(x, z)
+	if fade <= 0.001:
+		return 0.0
+	var w := region_weights(x, z)
+	var salt := Util.smoothstep(0.34, 0.78, _mask.get_noise_2d(x, z)) * (0.35 + w.w * 0.65)
+	var lift := 0.0
 	for mesa in _mesas:
 		var d: float = Vector2(x, z).distance_to(mesa.pos)
 		var radius: float = mesa.radius
-		if d < radius:
-			var lift := 0.0
-			if bool(mesa.flat):
-				lift = Util.smoothstep(radius, radius * 0.58, d)
-			else:
-				var u := 1.0 - d / radius
-				lift = u * u
-			h += float(mesa.height) * lift * (1.0 - salt * 0.45)
+		if d >= radius:
+			continue
+		var shape := 0.0
+		if bool(mesa.flat):
+			shape = Util.smoothstep(radius, radius * 0.62, d)
+		else:
+			var u := 1.0 - d / radius
+			shape = u * u
+		lift += float(mesa.height) * shape * (1.0 - salt * 0.35)
 	var ridged := pow(1.0 - absf(_ridge.get_noise_2d(x, z)), 1.7)
 	var range_mask := Util.smoothstep(-0.05, 0.62, _range.get_noise_2d(x, z))
-	var range_amp := lerpf(72.0, 118.0, clampf(w.y + w.z * 0.8, 0.0, 1.0))
-	h += ridged * range_mask * range_amp * (1.0 - salt * 0.2)
-	for canyon in _canyons:
-		var dist := _dist_to_polyline(Vector2(x, z), canyon.pts)
-		var carve := 1.0 - Util.smoothstep(canyon.inner, canyon.outer, dist)
-		h -= carve * float(canyon.depth)
-	return maxf(h, 0.35)
+	var range_amp := lerpf(78.0, 130.0, clampf(w.y + w.z * 0.8, 0.0, 1.0))
+	lift += ridged * range_mask * range_amp * (1.0 - salt * 0.15)
+	return lift * fade
+
+
+func _border_fade(x: float, z: float) -> float:
+	var edge := minf(minf(x + HALF, HALF - x), minf(z + HALF, HALF - z))
+	return Util.smoothstep(0.0, BORDER, edge)
+
+
+func _height_from(grid: PackedFloat32Array, x: float, z: float) -> float:
+	var gx := (x + HALF) / cell
+	var gz := (z + HALF) / cell
+	if gx < 0.0 or gz < 0.0 or gx > float(RES - 1) or gz > float(RES - 1):
+		return waste_height(x, z)
+	var x0 := clampi(int(floor(gx)), 0, RES - 2)
+	var z0 := clampi(int(floor(gz)), 0, RES - 2)
+	var tx := clampf(gx - float(x0), 0.0, 1.0)
+	var tz := clampf(gz - float(z0), 0.0, 1.0)
+	var h00 := grid[z0 * RES + x0]
+	var h10 := grid[z0 * RES + x0 + 1]
+	var h01 := grid[(z0 + 1) * RES + x0]
+	var h11 := grid[(z0 + 1) * RES + x0 + 1]
+	return lerpf(lerpf(h00, h10, tx), lerpf(h01, h11, tx), tz)
 
 
 func _dist_to_polyline(p: Vector2, pts: PackedVector2Array) -> float:
@@ -371,6 +474,12 @@ func _dist_to_seg(p: Vector2, a: Vector2, b: Vector2) -> float:
 		return p.distance_to(a)
 	var t := clampf((p - a).dot(ab) / len2, 0.0, 1.0)
 	return p.distance_to(a + ab * t)
+
+
+func _perlin(seed: int, frequency: float, octaves: int) -> FastNoiseLite:
+	var n := _noise(seed, frequency, octaves)
+	n.noise_type = FastNoiseLite.TYPE_PERLIN
+	return n
 
 
 func _noise(seed: int, frequency: float, octaves: int) -> FastNoiseLite:
