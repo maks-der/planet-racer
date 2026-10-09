@@ -140,30 +140,48 @@ func _finish(car: HoverCar) -> void:
 
 func _watch_track(dt: float) -> void:
 	var pts: PackedVector3Array = race.points
-	if pts.is_empty():
+	var count := pts.size()
+	if count < 2:
 		return
+	var circular := str(race.type) == "circuit" or pts[0].distance_to(pts[count - 1]) < 4.0
+	if circular and pts[0].distance_to(pts[count - 1]) < 4.0:
+		count -= 1
 	for car in racers:
 		if car.finished:
 			continue
-		var best := 100000.0
-		var hint := car.route_hint
-		var a := maxi(hint - 20, 0)
-		var b := mini(hint + 70, pts.size() - 1)
 		var flat := Vector2(car.global_position.x, car.global_position.z)
-		var found := hint
-		for i in range(a, b + 1):
-			var d := flat.distance_to(Vector2(pts[i].x, pts[i].z))
-			if d < best:
-				best = d
-				found = i
+		var hint := clampi(car.route_hint, 0, count - 1)
+		var found := _nearest_track_index(pts, count, circular, flat, hint, 80)
+		if flat.distance_to(Vector2(pts[found].x, pts[found].z)) > 36.0:
+			found = _nearest_track_index(pts, count, circular, flat, 0, count)
 		car.route_hint = found
-		if best > 48.0:
+		var along := flat.distance_to(Vector2(pts[found].x, pts[found].z))
+		var on_road: bool = world.roads.on_roadway(flat.x, flat.y)
+		if along > 56.0 and not on_road:
 			car.offtrack += dt
 		else:
 			car.offtrack = 0.0
 		if car.offtrack > 4.0:
 			car.offtrack = 0.0
 			respawn(car)
+
+
+func _nearest_track_index(pts: PackedVector3Array, count: int, circular: bool, flat: Vector2, hint: int, window: int) -> int:
+	var best := 100000.0
+	var found := clampi(hint, 0, count - 1)
+	var span := window if window < count else count
+	var start := -span if window < count else 0
+	for step in range(start, span + 1):
+		var i := hint + step
+		if circular:
+			i = posmod(i, count)
+		elif i < 0 or i >= count:
+			continue
+		var d := flat.distance_to(Vector2(pts[i].x, pts[i].z))
+		if d < best:
+			best = d
+			found = i
+	return found
 
 
 func respawn(car: HoverCar) -> void:
@@ -179,6 +197,15 @@ func respawn(car: HoverCar) -> void:
 	if aim.length_squared() < 1.0:
 		aim = race.start_dir
 	world.place_car(car, pos, aim, 20.0)
+	car.offtrack = 0.0
+	var pts: PackedVector3Array = race.points
+	if pts.size() > 1:
+		var count := pts.size()
+		var circular := str(race.type) == "circuit"
+		if pts[0].distance_to(pts[count - 1]) < 4.0:
+			count -= 1
+			circular = true
+		car.route_hint = _nearest_track_index(pts, count, circular, Vector2(pos.x, pos.z), 0, count)
 
 
 func _refresh_order() -> void:

@@ -118,8 +118,11 @@ func ground_color(x: float, z: float, h: float, normal: Vector3, road: float) ->
 	if h < 3.2 and normal.y > 0.94 and w.w > 0.45:
 		col = col.lerp(Color(0.74, 0.68, 0.54), 0.4)
 	if road > 0.05:
-		var track := Color(col.r * 0.62, col.g * 0.55, col.b * 0.42).lerp(Color(0.42, 0.28, 0.14), 0.4)
-		col = col.lerp(track, clampf(road * 1.15, 0.0, 1.0))
+		var dust := Color(0.66, 0.48, 0.28)
+		var packed := Color(0.45, 0.31, 0.17)
+		var track := dust.lerp(packed, clampf(road, 0.0, 1.0))
+		track = track.lerp(col, 0.18)
+		col = col.lerp(track, clampf(road * 1.25, 0.0, 1.0))
 	return col
 
 

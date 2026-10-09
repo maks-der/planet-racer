@@ -492,7 +492,7 @@ func _fly(dt: float, input: Dictionary) -> void:
 		air_roll = move_toward(air_roll, 0.0, dt * 0.65)
 	if absf(float(input.throttle)) < 0.15:
 		air_pitch = move_toward(air_pitch, 0.0, dt * 0.4)
-	yaw -= float(input.steer) * float(stats.turn) * 0.72 * dt * invert
+	yaw -= float(input.steer) * float(stats.turn) * 0.72 * dt
 	var nose := Basis.from_euler(Vector3(air_pitch, yaw, 0.0)) * Vector3(0, 0, -1)
 	var crippled := _crippled()
 	boosting = bool(input.boost) and boost > 1.0 and not crippled

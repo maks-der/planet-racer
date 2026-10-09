@@ -99,8 +99,70 @@ static func _add_roads(parent: Node3D, roads: RoadNetwork, _terrain: TerrainFiel
 	var root := Node3D.new()
 	root.name = "Roadside"
 	parent.add_child(root)
+	await _add_dirt_roads(root, roads, host)
 	await _place_arches(root, roads, host)
 	await _place_posts(root, roads, host)
+
+
+static func _add_dirt_roads(root: Node3D, roads: RoadNetwork, host: Node = null) -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var steps := 0
+	for edge in roads.edges:
+		var pts: PackedVector3Array = edge.points
+		if pts.size() < 2:
+			continue
+		var half := float(edge.width) * 0.5
+		var dist := 0.0
+		for i in pts.size() - 1:
+			var p0: Vector3 = pts[i]
+			var p1: Vector3 = pts[i + 1]
+			var span := Vector2(p1.x - p0.x, p1.z - p0.z).length()
+			if span < 0.05:
+				continue
+			var right0 := _road_right(pts, i)
+			var right1 := _road_right(pts, i + 1)
+			var lift := Vector3(0.0, 0.22, 0.0)
+			var left0 := p0 - right0 * half + lift
+			var right_pt0 := p0 + right0 * half + lift
+			var left1 := p1 - right1 * half + lift
+			var right_pt1 := p1 + right1 * half + lift
+			var v0 := dist * 0.045
+			var v1 := (dist + span) * 0.045
+			_road_vert(st, left0, 0.0, v0)
+			_road_vert(st, right_pt0, 1.0, v0)
+			_road_vert(st, left1, 0.0, v1)
+			_road_vert(st, right_pt0, 1.0, v0)
+			_road_vert(st, right_pt1, 1.0, v1)
+			_road_vert(st, left1, 0.0, v1)
+			dist += span
+		steps += 1
+		if host != null and steps % 8 == 0:
+			await host.get_tree().process_frame
+	var mesh := st.commit()
+	if mesh.get_surface_count() == 0:
+		return
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/road.gdshader")
+	var inst := MeshInstance3D.new()
+	inst.name = "DirtRoads"
+	inst.mesh = mesh
+	inst.material_override = mat
+	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(inst)
+
+
+static func _road_vert(st: SurfaceTool, point: Vector3, u: float, v: float) -> void:
+	st.set_uv(Vector2(u, v))
+	st.set_normal(Vector3.UP)
+	st.add_vertex(point)
+
+
+static func _road_right(pts: PackedVector3Array, i: int) -> Vector3:
+	var right := Vector3.UP.cross(_flat_forward(pts, i))
+	if right.length_squared() < 0.0001:
+		return Vector3.RIGHT
+	return right.normalized()
 
 
 static func _place_arches(root: Node3D, roads: RoadNetwork, host: Node = null) -> void:

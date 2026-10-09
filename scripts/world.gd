@@ -15,7 +15,7 @@ var hud: GameHud
 var beacon_positions: Array[Vector3] = []
 var beacon_roots: Array[Node3D] = []
 var gates: Array[Node3D] = []
-var gate_mats: Array[StandardMaterial3D] = []
+var gate_mats: Array[ShaderMaterial] = []
 var near_race := -1
 var waypoint := -1
 var safe_pos := Vector3.ZERO
@@ -24,6 +24,7 @@ var rock_grid: Dictionary = {}
 var overview := false
 var _smoke := false
 var _gate_root: Node3D
+var _race_line: MeshInstance3D
 var _env: WorldEnvironment
 var _sun: DirectionalLight3D
 var arrival
@@ -46,6 +47,7 @@ const ArrivalScene := preload("res://scenes/loading/arrival.tscn")
 const CarScene := preload("res://scenes/vehicles/hover_car.tscn")
 const BeaconScene := preload("res://scenes/props/beacon.tscn")
 const GateScene := preload("res://scenes/props/gate.tscn")
+const CheckpointShader := preload("res://shaders/checkpoint.gdshader")
 const ShipScene := preload("res://scenes/loading/starship.tscn")
 const WastelandScript := preload("res://scripts/wasteland_view.gd")
 
@@ -276,7 +278,9 @@ func _physics_process(dt: float) -> void:
 				_begin_finish_slowmo()
 		if Input.is_action_just_pressed("reset") and race.started and not race.finished:
 			race.respawn(player)
+		_update_race_line()
 	else:
+		_clear_race_line()
 		_update_prompt()
 		if near_race >= 0 and Input.is_action_just_pressed("interact") and not player.airborne:
 			start_race(near_race)
@@ -696,15 +700,19 @@ func _build_gates(def: Dictionary) -> void:
 		holder.basis = Basis(side, Vector3.UP, -prev)
 		_gate_root.add_child(holder)
 		gates.append(holder)
-		var mat := StandardMaterial3D.new()
-		var tint := Color(1.0, 0.72, 0.25) if i == 0 else Color(0.2, 0.9, 1.0)
-		mat.albedo_color = tint
-		mat.emission_enabled = true
-		mat.emission = tint
-		mat.emission_energy_multiplier = 2.0
+		var mat := ShaderMaterial.new()
+		var tint := Color(1.0, 0.72, 0.25) if i == 0 else Color(0.2, 0.85, 1.0)
+		var column := holder.get_node("Column") as MeshInstance3D
+		var cyl := column.mesh as CylinderMesh
+		mat.shader = CheckpointShader
+		mat.set_shader_parameter("albedo", Color(tint.r, tint.g, tint.b, 0.4))
+		mat.set_shader_parameter("half_height", cyl.height * 0.5)
 		gate_mats.append(mat)
 		for mesh_node in holder.find_children("*", "MeshInstance3D"):
-			(mesh_node as MeshInstance3D).material_override = mat
+			var ring := mesh_node as MeshInstance3D
+			ring.material_override = mat
+			ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_ensure_race_line()
 
 
 func _highlight_gate() -> void:
@@ -712,7 +720,9 @@ func _highlight_gate() -> void:
 		return
 	var idx := player.cp_index
 	for i in gate_mats.size():
-		gate_mats[i].emission_energy_multiplier = 5.0 if i == idx else 1.2
+		var color: Color = gate_mats[i].get_shader_parameter("albedo")
+		color.a = 0.5 if i == idx else 0.32
+		gate_mats[i].set_shader_parameter("albedo", color)
 
 
 func _clear_gates() -> void:
@@ -721,6 +731,96 @@ func _clear_gates() -> void:
 			gate.free()
 	gates.clear()
 	gate_mats.clear()
+	_clear_race_line()
+
+
+func _ensure_race_line() -> void:
+	if _race_line != null:
+		return
+	_race_line = MeshInstance3D.new()
+	_race_line.name = "RaceLine"
+	var mat := StandardMaterial3D.new()
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.vertex_color_use_as_albedo = true
+	mat.albedo_color = Color(0.45, 0.78, 0.86, 0.4)
+	_race_line.material_override = mat
+	_race_line.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_race_line)
+
+
+func _clear_race_line() -> void:
+	if _race_line == null or _race_line.mesh == null:
+		return
+	(_race_line.mesh as ImmediateMesh).clear_surfaces()
+
+
+func _update_race_line() -> void:
+	if player == null or not race.active:
+		_clear_race_line()
+		return
+	_ensure_race_line()
+	var pts: PackedVector3Array = race.race.points
+	var count := pts.size()
+	if count < 2:
+		_clear_race_line()
+		return
+	var circular := pts[0].distance_to(pts[count - 1]) < 4.0
+	if circular:
+		count -= 1
+	var hint := clampi(player.route_hint, 0, count - 1)
+	var mesh := _race_line.mesh as ImmediateMesh
+	if mesh == null:
+		mesh = ImmediateMesh.new()
+		_race_line.mesh = mesh
+	else:
+		mesh.clear_surfaces()
+	mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	var ahead := 80
+	for step in ahead:
+		var i0 := hint + step
+		var i1 := hint + step + 1
+		if circular:
+			i0 = posmod(i0, count)
+			i1 = posmod(i1, count)
+		elif i1 >= count:
+			break
+		var p0 := pts[i0]
+		var p1 := pts[i1]
+		var dir := Vector3(p1.x - p0.x, 0.0, p1.z - p0.z)
+		if dir.length_squared() < 0.04:
+			continue
+		dir = dir.normalized()
+		var side := dir.cross(Vector3.UP)
+		if side.length_squared() < 0.0001:
+			continue
+		side = side.normalized()
+		var lift := Vector3(0.0, 0.55, 0.0)
+		var width := 1.05
+		var a := p0 + side * width + lift
+		var b := p0 - side * width + lift
+		var c := p1 + side * width + lift
+		var d := p1 - side * width + lift
+		var fade := 1.0 - float(step) / float(ahead)
+		mesh.surface_set_color(Color(0.35, 0.72, 0.82, 0.18 + fade * 0.16))
+		mesh.surface_add_vertex(a)
+		mesh.surface_add_vertex(c)
+		mesh.surface_add_vertex(b)
+		mesh.surface_add_vertex(b)
+		mesh.surface_add_vertex(c)
+		mesh.surface_add_vertex(d)
+		if step % 4 == 0:
+			var tip := p0 + dir * 3.4 + lift + Vector3.UP * 0.08
+			var left := p0 - dir * 0.2 + side * 1.45 + lift
+			var right := p0 - dir * 0.2 - side * 1.45 + lift
+			mesh.surface_set_color(Color(0.55, 0.82, 0.9, 0.28 + fade * 0.18))
+			mesh.surface_add_vertex(tip)
+			mesh.surface_add_vertex(left)
+			mesh.surface_add_vertex(right)
+			mesh.surface_add_vertex(tip)
+			mesh.surface_add_vertex(right)
+			mesh.surface_add_vertex(left)
+	mesh.surface_end()
 
 
 func _clear_bots() -> void:

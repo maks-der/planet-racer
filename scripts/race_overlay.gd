@@ -33,7 +33,7 @@ func _draw_map() -> void:
 	var center := size * 0.5
 	for edge in world.roads.edges:
 		var pts: PackedVector3Array = edge.points
-		var col := Color(1.0, 0.55, 0.18, 0.95) if bool(edge.shortcut) else Color(0.3, 0.9, 1.0, 0.9)
+		var col := Color(0.72, 0.48, 0.24, 0.95) if bool(edge.shortcut) else Color(0.55, 0.36, 0.18, 0.92)
 		var prev := Vector2.INF
 		for i in range(0, pts.size(), 4):
 			var mp := _map_point(pts[i], player, center, ppm)
@@ -81,7 +81,7 @@ func _draw_world() -> void:
 	draw_rect(Rect2(origin, Vector2(side, side)), Color(0.45, 0.9, 1.0, 0.85), false, 2.0)
 	for edge in world.roads.edges:
 		var pts: PackedVector3Array = edge.points
-		var col := Color(1.0, 0.55, 0.18, 0.95) if bool(edge.shortcut) else Color(0.35, 0.92, 1.0, 0.92)
+		var col := Color(0.72, 0.48, 0.24, 0.95) if bool(edge.shortcut) else Color(0.58, 0.38, 0.2, 0.92)
 		var prev := Vector2.INF
 		for i in range(0, pts.size(), 3):
 			var mp := _world_point(pts[i], origin, scale, half)
@@ -156,15 +156,15 @@ func _draw_course(def: Dictionary, show_racers: bool) -> void:
 	for i in range(0, pts.size(), step):
 		var mp := origin + Vector2((pts[i].x - min_x) * scale, (max_z - pts[i].z) * scale)
 		if prev != Vector2.INF:
-			draw_line(prev, mp, Color(0.08, 0.16, 0.2, 0.95), width + 3.0, true)
-			draw_line(prev, mp, Color(0.35, 0.92, 1.0, 0.95), width, true)
+			draw_line(prev, mp, Color(0.28, 0.18, 0.1, 0.95), width + 3.0, true)
+			draw_line(prev, mp, Color(0.62, 0.42, 0.22, 0.95), width, true)
 		prev = mp
 	var last := origin + Vector2((pts[pts.size() - 1].x - min_x) * scale, (max_z - pts[pts.size() - 1].z) * scale)
 	if prev != Vector2.INF and prev.distance_to(last) > 1.0:
-		draw_line(prev, last, Color(0.35, 0.92, 1.0, 0.95), width, true)
+		draw_line(prev, last, Color(0.62, 0.42, 0.22, 0.95), width, true)
 	var start := origin + Vector2((pts[0].x - min_x) * scale, (max_z - pts[0].z) * scale)
 	if str(def.type) == "circuit":
-		draw_line(last, start, Color(0.35, 0.92, 1.0, 0.95), width, true)
+		draw_line(last, start, Color(0.62, 0.42, 0.22, 0.95), width, true)
 	var cps: PackedVector3Array = def.checkpoints
 	var next_i := -1
 	if show_racers:
