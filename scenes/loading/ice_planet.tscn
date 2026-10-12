@@ -1,0 +1,34 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Shader" path="res://shaders/ice_planet.gdshader" id="1_globe"]
+[ext_resource type="Shader" path="res://shaders/ice_atmosphere.gdshader" id="2_air"]
+
+[sub_resource type="ShaderMaterial" id="mat_globe"]
+shader = ExtResource("1_globe")
+shader_parameter/light_dir = Vector3(0.96, 0.12, 0.22)
+
+[sub_resource type="SphereMesh" id="mesh_globe"]
+radius = 6.2
+height = 12.4
+radial_segments = 96
+rings = 48
+
+[sub_resource type="ShaderMaterial" id="mat_air"]
+shader = ExtResource("2_air")
+shader_parameter/light_dir = Vector3(0.96, 0.12, 0.22)
+
+[sub_resource type="SphereMesh" id="mesh_air"]
+radius = 7.15
+height = 14.3
+radial_segments = 64
+rings = 32
+
+[node name="IcePlanet" type="Node3D"]
+
+[node name="Globe" type="MeshInstance3D" parent="."]
+mesh = SubResource("mesh_globe")
+surface_material_override/0 = SubResource("mat_globe")
+
+[node name="Air" type="MeshInstance3D" parent="."]
+mesh = SubResource("mesh_air")
+surface_material_override/0 = SubResource("mat_air")

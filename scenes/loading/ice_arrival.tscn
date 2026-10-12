@@ -1,0 +1,32 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/ice_arrival.gd" id="1_arrival"]
+[ext_resource type="PackedScene" path="res://scenes/loading/starfield.tscn" id="2_stars"]
+[ext_resource type="PackedScene" path="res://scenes/loading/ice_planet.tscn" id="3_planet"]
+[ext_resource type="PackedScene" path="res://scenes/loading/starship.tscn" id="4_ship"]
+
+[node name="IceArrival" type="Node3D"]
+script = ExtResource("1_arrival")
+
+[node name="Starfield" parent="." instance=ExtResource("2_stars")]
+
+[node name="IcePlanet" parent="." instance=ExtResource("3_planet")]
+
+[node name="Starship" parent="." instance=ExtResource("4_ship")]
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+light_color = Color(0.72, 0.84, 1, 1)
+light_energy = 2.4
+shadow_enabled = false
+
+[node name="Rim" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.5, 1.8, 13.5)
+light_color = Color(0.35, 0.55, 1, 1)
+light_energy = 1.1
+omni_range = 28.0
+
+[node name="Camera3D" type="Camera3D" parent="."]
+current = true
+fov = 42.0
+near = 0.05
+far = 400.0

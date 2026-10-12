@@ -46,6 +46,7 @@ var _finish_until := 0
 
 const VIEW_NAMES: PackedStringArray = ["CHASE", "FAR", "HOOD", "BUMPER"]
 const ArrivalScene := preload("res://scenes/loading/arrival.tscn")
+const IceArrivalScene := preload("res://scenes/loading/ice_arrival.tscn")
 const CarScene := preload("res://scenes/vehicles/hover_car.tscn")
 const BeaconScene := preload("res://scenes/props/beacon.tscn")
 const GateScene := preload("res://scenes/props/gate.tscn")
@@ -63,7 +64,7 @@ func _ready() -> void:
 	_env = WorldEnvironment.new()
 	_env.environment = _space_environment()
 	add_child(_env)
-	arrival = ArrivalScene.instantiate()
+	arrival = IceArrivalScene.instantiate() if GameState.planet == "ice" else ArrivalScene.instantiate()
 	if _smoke:
 		arrival.voyage_time = 0.45
 	add_child(arrival)
@@ -140,9 +141,9 @@ func _ready() -> void:
 	await arrival.play_out(func() -> void:
 		_env.environment = _ice_environment() if GameState.planet == "ice" else _desert_environment()
 		if GameState.planet == "ice":
-			_sun.light_color = Color(1.0, 0.97, 0.93)
-			_sun.light_energy = 1.7
-			_sun.rotation_degrees = Vector3(-52, 28, 0)
+			_sun.light_color = Color(0.62, 0.75, 0.98)
+			_sun.light_energy = 0.48
+			_sun.rotation_degrees = Vector3(-14, 148, 0)
 		_sun.visible = true
 		cam.current = true
 	)
@@ -388,32 +389,27 @@ func _ice_environment() -> Environment:
 	env.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
 	var sky_mat := ShaderMaterial.new()
-	sky_mat.shader = load("res://shaders/clouds.gdshader")
-	sky_mat.set_shader_parameter("sky_top", Color(0.14, 0.4, 0.86))
-	sky_mat.set_shader_parameter("sky_horizon", Color(0.58, 0.76, 0.94))
-	sky_mat.set_shader_parameter("ground_horizon", Color(0.78, 0.88, 0.96))
-	sky_mat.set_shader_parameter("ground_bottom", Color(0.42, 0.6, 0.78))
-	sky_mat.set_shader_parameter("cloud_cover", 0.78)
-	sky_mat.set_shader_parameter("cold", 1.0)
+	sky_mat.shader = load("res://shaders/aurora.gdshader")
 	var blow := terrain.wind_dir
 	sky_mat.set_shader_parameter("wind_dir", Vector2(blow.x, blow.z))
 	_sky_mat = sky_mat
 	sky.sky_material = sky_mat
 	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.82
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.1, 0.16, 0.3)
+	env.ambient_light_energy = 0.42
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.glow_enabled = true
-	env.glow_intensity = 0.35
-	env.glow_strength = 0.7
-	env.glow_bloom = 0.08
-	env.glow_hdr_threshold = 1.2
+	env.glow_intensity = 0.85
+	env.glow_strength = 0.95
+	env.glow_bloom = 0.18
+	env.glow_hdr_threshold = 0.55
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
-	env.fog_density = 0.00032
-	env.fog_light_color = Color(0.72, 0.84, 0.96)
-	env.fog_aerial_perspective = 0.5
-	env.fog_sky_affect = 0.25
+	env.fog_density = 0.00048
+	env.fog_light_color = Color(0.04, 0.07, 0.12)
+	env.fog_aerial_perspective = 0.55
+	env.fog_sky_affect = 0.65
 	return env
 
 
@@ -1128,7 +1124,7 @@ func _build_snow() -> void:
 	mat.gravity = Vector3(0.2, -0.35, 0.1)
 	mat.scale_min = 0.15
 	mat.scale_max = 0.4
-	mat.color = Color(0.95, 0.97, 1.0, 0.55)
+	mat.color = Color(0.72, 0.8, 0.92, 0.4)
 	_snow_fx.process_material = mat
 	var quad := QuadMesh.new()
 	quad.size = Vector2(0.12, 0.12)
@@ -1136,7 +1132,7 @@ func _build_snow() -> void:
 	qmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	qmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	qmat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
-	qmat.albedo_color = Color(0.96, 0.98, 1.0, 0.7)
+	qmat.albedo_color = Color(0.75, 0.84, 0.96, 0.45)
 	quad.material = qmat
 	_snow_fx.draw_pass_1 = quad
 	add_child(_snow_fx)

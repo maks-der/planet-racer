@@ -14,28 +14,35 @@ var _status: Label
 var _bar: ProgressBar
 var _veil: ColorRect
 var _wash := Color(0.45, 0.28, 0.14)
-var _approach_from := Vector3(9.4, 1.6, 7.2)
-var _approach_to := Vector3(4.6, 0.85, 3.4)
+var planet_node_name := "DesertPlanet"
+var planet_pos := Vector3(-3.1, 0.15, -0.4)
+var planet_scale := Vector3.ONE
+var ship_scale := Vector3.ONE
+var approach_from := Vector3(9.4, 1.6, 7.2)
+var approach_to := Vector3(4.6, 0.85, 3.4)
+var cam_from := Vector3(4.4, 1.15, 9.6)
+var cam_to := Vector3(4.4, 1.15, 9.6)
+var look_from := Vector3(1.7, 0.25, -0.2)
+var look_to := Vector3(1.7, 0.25, -0.2)
+var cam_fov := 58.0
+var cam_roll := 0.0
+var title_color := Color(0.95, 0.82, 0.62)
 
 
 func _ready() -> void:
 	position = Vector3(0.0, 16000.0, 0.0)
-	if GameState.planet == "ice":
-		_wash = Color(0.75, 0.86, 0.95)
-	_planet = get_node_or_null("DesertPlanet") as Node3D
+	_planet = get_node_or_null(planet_node_name) as Node3D
 	_ship = get_node_or_null("Starship") as Node3D
 	_cam = get_node_or_null("Camera3D") as Camera3D
+	if _cam:
+		_cam.fov = cam_fov
 	if _planet:
-		_planet.position = Vector3(-3.1, 0.15, -0.4)
+		_planet.position = planet_pos
+		_planet.scale = planet_scale
 		_planet.rotation.y = PI
-		if GameState.planet == "ice":
-			var globe := _planet.get_node_or_null("Globe") as MeshInstance3D
-			if globe:
-				var mat := ShaderMaterial.new()
-				mat.shader = load("res://shaders/ice_planet.gdshader")
-				globe.material_override = mat
 	if _ship:
-		_ship.position = _approach_from
+		_ship.position = approach_from
+		_ship.scale = ship_scale
 	_build_ui()
 
 
@@ -79,16 +86,19 @@ func _process(dt: float) -> void:
 
 func _frame_approach(u: float) -> void:
 	if _planet:
-		_planet.position = Vector3(-3.1, 0.15, -0.4)
-		_planet.scale = Vector3.ONE
+		_planet.position = planet_pos
+		_planet.scale = planet_scale
 	if _ship:
-		_ship.position = _approach_from.lerp(_approach_to, u)
-		_ship.scale = Vector3.ONE
-		_aim_ship((_approach_to - _approach_from).normalized())
+		_ship.position = approach_from.lerp(approach_to, u)
+		_ship.scale = ship_scale
+		_aim_ship((approach_to - approach_from).normalized())
 		_set_flames(u > 0.001)
 	if _cam:
-		_cam.position = Vector3(4.4, 1.15, 9.6)
-		_cam.look_at(to_global(Vector3(1.7, 0.25, -0.2)), Vector3.UP)
+		_cam.position = cam_from.lerp(cam_to, u)
+		var look := look_from.lerp(look_to, u)
+		var roll := deg_to_rad(cam_roll)
+		var up := Vector3(sin(roll), cos(roll), 0.0)
+		_cam.look_at(to_global(look), up)
 
 
 func _aim_ship(dir: Vector3) -> void:
@@ -135,7 +145,7 @@ func _build_ui() -> void:
 	title.text = GameState.planet_title()
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 28)
-	title.add_theme_color_override("font_color", Color(0.95, 0.82, 0.62))
+	title.add_theme_color_override("font_color", title_color)
 	box.add_child(title)
 	_status = Label.new()
 	_status.text = "STARSHIP INBOUND"

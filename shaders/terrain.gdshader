@@ -25,7 +25,7 @@ void fragment() {
 		vec3 albedo = COLOR.rgb;
 		albedo = mix(albedo, albedo * vec3(0.68, 0.78, 0.9), trough * (1.0 - slope) * 0.55);
 		albedo = mix(albedo, vec3(0.22, 0.4, 0.55), crack * 0.65);
-		albedo = mix(albedo, vec3(0.95, 0.98, 1.0), strata * smoothstep(0.2, 0.55, slope));
+		albedo = mix(albedo, vec3(0.55, 0.68, 0.8), strata * smoothstep(0.2, 0.55, slope));
 		float spark = step(0.992, fract(sin(dot(wpos.xz, vec2(12.9898, 78.233))) * 43758.5453));
 		albedo += vec3(0.12) * spark * (1.0 - slope);
 		ALBEDO = albedo;

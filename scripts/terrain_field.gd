@@ -346,23 +346,23 @@ func _ice_color(x: float, z: float, h: float, normal: Vector3, road: float) -> C
 	var along := _ice_along(x, z)
 	var crest := sin(across * 0.078) * 0.62 + sin(across * 0.21 + along * 0.012) * 0.38
 	var trough := clampf(0.5 - crest * 0.5, 0.0, 1.0)
-	var snow := Color(0.97, 0.98, 1.0)
-	var shade := Color(0.55, 0.7, 0.86)
+	var snow := Color(0.52, 0.6, 0.72)
+	var shade := Color(0.26, 0.36, 0.5)
 	var col := snow.lerp(shade, trough * 0.48)
 	var slope := clampf(1.0 - normal.y, 0.0, 1.0)
 	if slope > 0.1:
 		var face := clampf((slope - 0.1) / 0.42, 0.0, 1.0)
 		var strata := sin(h * 0.38 + along * 0.008) * 0.5 + 0.5
-		var deep := Color(0.16, 0.46, 0.66)
-		var turquoise := Color(0.58, 0.9, 0.96)
+		var deep := Color(0.08, 0.24, 0.4)
+		var turquoise := Color(0.22, 0.48, 0.62)
 		var ice := deep.lerp(turquoise, strata)
 		var band := smoothstep(0.78, 0.94, fposmod(h * 0.065, 1.0))
-		ice = ice.lerp(Color(0.94, 0.97, 1.0), band * 0.9)
+		ice = ice.lerp(Color(0.62, 0.74, 0.86), band * 0.75)
 		col = col.lerp(ice, face)
 	if h > 18.0 and slope < 0.2:
-		col = col.lerp(Color(1.0, 1.0, 1.0), clampf((h - 18.0) / 40.0, 0.0, 0.45))
+		col = col.lerp(Color(0.7, 0.78, 0.88), clampf((h - 18.0) / 40.0, 0.0, 0.4))
 	if road > 0.05:
-		var packed := Color(0.74, 0.86, 0.94)
+		var packed := Color(0.38, 0.5, 0.64)
 		col = col.lerp(packed, clampf(road, 0.0, 1.0) * 0.72)
 	return col
 

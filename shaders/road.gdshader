@@ -24,9 +24,9 @@ void fragment() {
 	albedo = mix(albedo, gravel, stones * 0.5);
 	albedo *= 0.9 + grain * 0.16 + wash * 0.05;
 	if (frozen > 0.5) {
-		vec3 snow = vec3(0.96, 0.98, 1.0);
-		vec3 ice = vec3(0.7, 0.84, 0.94);
-		vec3 rut_ice = vec3(0.4, 0.58, 0.74);
+		vec3 snow = vec3(0.46, 0.55, 0.66);
+		vec3 ice = vec3(0.28, 0.4, 0.54);
+		vec3 rut_ice = vec3(0.14, 0.22, 0.34);
 		albedo = mix(snow, ice, crown);
 		albedo = mix(albedo, rut_ice, ruts * 0.75);
 		albedo *= 0.94 + grain * 0.08;
