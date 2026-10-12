@@ -58,7 +58,7 @@ func _fully_inside(ix: int, iz: int) -> bool:
 
 
 func _is_skirt(key: int) -> bool:
-	var ix := int(key / 100000) - 5000
+	var ix := int(float(key) / 100000.0) - 5000
 	var iz := key % 100000 - 5000
 	var min_x := float(ix) * CHUNK
 	var max_x := min_x + CHUNK

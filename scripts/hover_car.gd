@@ -60,11 +60,7 @@ var _bolt_light: OmniLight3D
 var _arc_timer := 0.0
 var _arc_live := false
 var _arc_seed := 0
-var _arc_from := Vector3.ZERO
-var _arc_to := Vector3.ZERO
 var _arc2_live := false
-var _arc2_from := Vector3.ZERO
-var _arc2_to := Vector3.ZERO
 var _hit_speed := 0.0
 var _hit_decel := 0.0
 var _hull_smoke: GPUParticles3D
@@ -531,9 +527,9 @@ func _fly(dt: float, input: Dictionary) -> void:
 
 
 func _apply_visual(normal: Vector3, dt: float) -> void:
-	var basis: Basis
+	var frame: Basis
 	if airborne:
-		basis = Basis.from_euler(Vector3(air_pitch, yaw, air_roll))
+		frame = Basis.from_euler(Vector3(air_pitch, yaw, air_roll))
 	else:
 		var fwd := Util.forward_from_yaw(yaw)
 		var right := Util.right_from_yaw(yaw)
@@ -542,19 +538,19 @@ func _apply_visual(normal: Vector3, dt: float) -> void:
 		var bank := -last_steer * 0.28 * clampf(speed_mps() / 40.0, 0.0, 1.0)
 		if drifting:
 			bank *= 1.25
-		basis = Basis.from_euler(Vector3(sp, yaw, sr + bank))
-	var blended := global_transform.basis.slerp(basis.orthonormalized(), 1.0 - exp(-14.0 * dt))
+		frame = Basis.from_euler(Vector3(sp, yaw, sr + bank))
+	var blended := global_transform.basis.slerp(frame.orthonormalized(), 1.0 - exp(-14.0 * dt))
 	global_transform = Transform3D(blended, global_position)
 
 
-func _update_fx(surface: Dictionary) -> void:
+func _update_fx(_surface: Dictionary) -> void:
 	var speed := speed_mps()
 	var power := clampf(speed / (SPEED_LIMIT * 0.45), 0.05, 1.0)
 	if boosting:
 		power = 1.0
 	for flame in _flames:
-		var len := lerpf(0.15, 1.35, power) * (1.25 if boosting else 1.0)
-		flame.scale = Vector3(lerpf(0.35, 1.0, power), len, lerpf(0.35, 1.0, power))
+		var flame_len := lerpf(0.15, 1.35, power) * (1.25 if boosting else 1.0)
+		flame.scale = Vector3(lerpf(0.35, 1.0, power), flame_len, lerpf(0.35, 1.0, power))
 		flame.visible = controls_enabled and (speed > 6.0 or boosting)
 	if _dust:
 		var moving := (not airborne) and speed > 10.0 and controls_enabled

@@ -9,10 +9,10 @@ static func font(weight: int = 700) -> SystemFont:
 
 
 static func theme() -> Theme:
-	var theme := Theme.new()
-	theme.default_font = font(600)
-	theme.default_font_size = 18
-	return theme
+	var made := Theme.new()
+	made.default_font = font(600)
+	made.default_font_size = 18
+	return made
 
 
 static func panel() -> StyleBoxFlat:

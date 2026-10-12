@@ -26,25 +26,25 @@ var _base_heights := PackedFloat32Array()
 var planet := "desert"
 
 
-func generate(seed: int) -> void:
-	begin(seed)
+func generate(noise_seed: int) -> void:
+	begin(noise_seed)
 	write_rows(0, RES)
 
 
-func begin(seed: int) -> void:
-	_dune = _perlin(seed, 0.0018, 4)
-	_detail = _perlin(seed + 11, 0.014, 3)
-	_ridge = _noise(seed + 23, 0.0016, 5)
-	_range = _noise(seed + 41, 0.00072, 2)
-	_mask = _noise(seed + 57, 0.0014, 2)
-	_waste = _noise(seed + 70, 0.0022, 3)
-	_waste_ridge = _noise(seed + 88, 0.0011, 3)
-	_biome = _noise(seed + 103, 0.0017, 2)
+func begin(noise_seed: int) -> void:
+	_dune = _perlin(noise_seed, 0.0018, 4)
+	_detail = _perlin(noise_seed + 11, 0.014, 3)
+	_ridge = _noise(noise_seed + 23, 0.0016, 5)
+	_range = _noise(noise_seed + 41, 0.00072, 2)
+	_mask = _noise(noise_seed + 57, 0.0014, 2)
+	_waste = _noise(noise_seed + 70, 0.0022, 3)
+	_waste_ridge = _noise(noise_seed + 88, 0.0011, 3)
+	_biome = _noise(noise_seed + 103, 0.0017, 2)
 	if planet == "ice":
-		_build_ice_plateaus(seed)
+		_build_ice_plateaus(noise_seed)
 	else:
-		_build_features(seed)
-	var ang := float(seed % 628) * 0.01
+		_build_features(noise_seed)
+	var ang := float(noise_seed % 628) * 0.01
 	wind_dir = Vector3(cos(ang), 0.0, sin(ang)).normalized()
 	heights.resize(RES * RES)
 	heights.fill(1.0)
@@ -113,9 +113,9 @@ func ground_color(x: float, z: float, h: float, normal: Vector3, road: float) ->
 	var slope := clampf(1.0 - normal.y, 0.0, 1.0)
 	var gold := Color(0.78, 0.46, 0.16).lerp(Color(0.48, 0.24, 0.08), slope * 0.9)
 	var red := Color(0.7, 0.24, 0.1).lerp(Color(0.36, 0.12, 0.08), slope)
-	var tan := Color(0.58, 0.42, 0.24).lerp(Color(0.34, 0.26, 0.16), slope * 0.85)
+	var clay := Color(0.58, 0.42, 0.24).lerp(Color(0.34, 0.26, 0.16), slope * 0.85)
 	var pale := Color(0.7, 0.56, 0.34).lerp(Color(0.42, 0.34, 0.2), grit * 0.45)
-	var col := gold * w.x + red * w.y + tan * w.z + pale * w.w
+	var col := gold * w.x + red * w.y + clay * w.z + pale * w.w
 	if normal.y < 0.74:
 		var cliff := Color(0.66, 0.28, 0.14).lerp(Color(0.38, 0.24, 0.18), w.z)
 		col = col.lerp(cliff, clampf((0.74 - normal.y) / 0.38, 0.0, 1.0))
@@ -286,9 +286,9 @@ func blend_border() -> void:
 			road_mask[idx] *= 1.0 - t
 
 
-func _build_ice_plateaus(seed: int) -> void:
+func _build_ice_plateaus(noise_seed: int) -> void:
 	var rng := RandomNumberGenerator.new()
-	rng.seed = seed + 90
+	rng.seed = noise_seed + 90
 	_mesas.clear()
 	_canyons.clear()
 	var reach := HALF * 0.7
@@ -367,9 +367,9 @@ func _ice_color(x: float, z: float, h: float, normal: Vector3, road: float) -> C
 	return col
 
 
-func _build_features(seed: int) -> void:
+func _build_features(noise_seed: int) -> void:
 	var rng := RandomNumberGenerator.new()
-	rng.seed = seed + 90
+	rng.seed = noise_seed + 90
 	_mesas.clear()
 	var reach := HALF * 0.7
 	for i in 6:
@@ -596,15 +596,15 @@ func _dist_to_seg(p: Vector2, a: Vector2, b: Vector2) -> float:
 	return p.distance_to(a + ab * t)
 
 
-func _perlin(seed: int, frequency: float, octaves: int) -> FastNoiseLite:
-	var n := _noise(seed, frequency, octaves)
+func _perlin(noise_seed: int, frequency: float, octaves: int) -> FastNoiseLite:
+	var n := _noise(noise_seed, frequency, octaves)
 	n.noise_type = FastNoiseLite.TYPE_PERLIN
 	return n
 
 
-func _noise(seed: int, frequency: float, octaves: int) -> FastNoiseLite:
+func _noise(noise_seed: int, frequency: float, octaves: int) -> FastNoiseLite:
 	var n := FastNoiseLite.new()
-	n.seed = seed
+	n.seed = noise_seed
 	n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	n.frequency = frequency
 	n.fractal_type = FastNoiseLite.FRACTAL_FBM

@@ -75,7 +75,7 @@ func _draw_world() -> void:
 	var half := TerrainField.HALF
 	var side := minf(size.x, size.y) - 24.0
 	var origin := (size - Vector2(side, side)) * 0.5
-	var scale := side / (half * 2.0)
+	var map_scale := side / (half * 2.0)
 	if host.map_texture:
 		draw_texture_rect(host.map_texture, Rect2(origin, Vector2(side, side)), false)
 	draw_rect(Rect2(origin, Vector2(side, side)), Color(0.45, 0.9, 1.0, 0.85), false, 2.0)
@@ -84,23 +84,23 @@ func _draw_world() -> void:
 		var col := Color(0.5, 0.86, 1.0, 0.95) if bool(edge.shortcut) else Color(0.28, 0.75, 1.0, 0.95)
 		var prev := Vector2.INF
 		for i in range(0, pts.size(), 3):
-			var mp := _world_point(pts[i], origin, scale, half)
+			var mp := _world_point(pts[i], origin, map_scale, half)
 			if prev != Vector2.INF:
 				draw_line(prev, mp, col, 2.0, true)
 			prev = mp
-	_draw_rewarded_tracks(world, true, Vector3.ZERO, Vector2.ZERO, 0.0, origin, scale, half)
+	_draw_rewarded_tracks(world, true, Vector3.ZERO, Vector2.ZERO, 0.0, origin, map_scale, half)
 	for i in world.beacon_positions.size():
 		var bp: Vector3 = world.beacon_positions[i]
-		draw_circle(_world_point(bp, origin, scale, half), 4.0, Color(0.25, 0.95, 0.42))
+		draw_circle(_world_point(bp, origin, map_scale, half), 4.0, Color(0.25, 0.95, 0.42))
 	for station in world.fix_stations:
-		draw_circle(_world_point(station, origin, scale, half), 3.4, Color(0.3, 0.95, 0.48))
-	var port := _world_point(world.port_position, origin, scale, half)
+		draw_circle(_world_point(station, origin, map_scale, half), 3.4, Color(0.3, 0.95, 0.48))
+	var port := _world_point(world.port_position, origin, map_scale, half)
 	draw_rect(Rect2(port - Vector2(5, 5), Vector2(10, 10)), Color(0.5, 0.95, 1.0))
 	for bot in world.bots:
 		if is_instance_valid(bot):
-			draw_circle(_world_point(bot.global_position, origin, scale, half), 3.5, bot.accent)
+			draw_circle(_world_point(bot.global_position, origin, map_scale, half), 3.5, bot.accent)
 	var player: Vector3 = world.player.global_position
-	var pc := _world_point(player, origin, scale, half)
+	var pc := _world_point(player, origin, map_scale, half)
 	var fwd := Util.forward_from_yaw(world.player.yaw)
 	var right := Util.right_from_yaw(world.player.yaw)
 	var tip := pc + Vector2(fwd.x, -fwd.z) * 12.0
@@ -149,8 +149,8 @@ func _draw_course(def: Dictionary, show_racers: bool) -> void:
 	var span_z := maxf(max_z - min_z, 20.0)
 	var pad := 14.0
 	var inner := Vector2(size.x - pad * 2.0, size.y - pad * 2.0)
-	var scale := minf(inner.x / span_x, inner.y / span_z)
-	var origin := (size - Vector2(span_x, span_z) * scale) * 0.5
+	var fit := minf(inner.x / span_x, inner.y / span_z)
+	var origin := (size - Vector2(span_x, span_z) * fit) * 0.5
 	var step := 1 if pts.size() < 500 else 2
 	var width := clampf(size.x / 70.0, 2.4, 5.0)
 	var rank := _track_rank(def)
@@ -158,15 +158,15 @@ func _draw_course(def: Dictionary, show_racers: bool) -> void:
 	var edge := _reward_outline(rank)
 	var prev := Vector2.INF
 	for i in range(0, pts.size(), step):
-		var mp := origin + Vector2((pts[i].x - min_x) * scale, (max_z - pts[i].z) * scale)
+		var mp := origin + Vector2((pts[i].x - min_x) * fit, (max_z - pts[i].z) * fit)
 		if prev != Vector2.INF:
 			draw_line(prev, mp, edge, width + 3.0, true)
 			draw_line(prev, mp, ink, width, true)
 		prev = mp
-	var last := origin + Vector2((pts[pts.size() - 1].x - min_x) * scale, (max_z - pts[pts.size() - 1].z) * scale)
+	var last := origin + Vector2((pts[pts.size() - 1].x - min_x) * fit, (max_z - pts[pts.size() - 1].z) * fit)
 	if prev != Vector2.INF and prev.distance_to(last) > 1.0:
 		draw_line(prev, last, ink, width, true)
-	var start := origin + Vector2((pts[0].x - min_x) * scale, (max_z - pts[0].z) * scale)
+	var start := origin + Vector2((pts[0].x - min_x) * fit, (max_z - pts[0].z) * fit)
 	if str(def.type) == "circuit":
 		draw_line(last, start, ink, width, true)
 	var cps: PackedVector3Array = def.checkpoints
@@ -174,7 +174,7 @@ func _draw_course(def: Dictionary, show_racers: bool) -> void:
 	if show_racers:
 		next_i = int(host.world.player.cp_index)
 	for i in cps.size():
-		var cp := origin + Vector2((cps[i].x - min_x) * scale, (max_z - cps[i].z) * scale)
+		var cp := origin + Vector2((cps[i].x - min_x) * fit, (max_z - cps[i].z) * fit)
 		if i == next_i:
 			draw_circle(cp, 5.5, Color(1.0, 0.78, 0.28))
 		else:
@@ -183,7 +183,7 @@ func _draw_course(def: Dictionary, show_racers: bool) -> void:
 	for station in world_map.fix_stations:
 		if station.x < min_x - 40.0 or station.x > max_x + 40.0 or station.z < min_z - 40.0 or station.z > max_z + 40.0:
 			continue
-		var fs := origin + Vector2((station.x - min_x) * scale, (max_z - station.z) * scale)
+		var fs := origin + Vector2((station.x - min_x) * fit, (max_z - station.z) * fit)
 		draw_circle(fs, 4.0, Color(0.3, 0.95, 0.48))
 	draw_rect(Rect2(start - Vector2(4, 4), Vector2(8, 8)), Color(0.95, 0.98, 1.0))
 	if str(def.type) != "circuit":
@@ -195,10 +195,10 @@ func _draw_course(def: Dictionary, show_racers: bool) -> void:
 		if not is_instance_valid(bot):
 			continue
 		var bp: Vector3 = bot.global_position
-		var mb := origin + Vector2((bp.x - min_x) * scale, (max_z - bp.z) * scale)
+		var mb := origin + Vector2((bp.x - min_x) * fit, (max_z - bp.z) * fit)
 		draw_circle(mb, 3.2, bot.accent)
 	var player: Vector3 = world.player.global_position
-	var pc := origin + Vector2((player.x - min_x) * scale, (max_z - player.z) * scale)
+	var pc := origin + Vector2((player.x - min_x) * fit, (max_z - player.z) * fit)
 	var fwd := Util.forward_from_yaw(world.player.yaw)
 	var right := Util.right_from_yaw(world.player.yaw)
 	var tip := pc + Vector2(fwd.x, -fwd.z) * 9.0
@@ -207,7 +207,7 @@ func _draw_course(def: Dictionary, show_racers: bool) -> void:
 	draw_colored_polygon(PackedVector2Array([tip, a, b]), Color(1, 1, 1))
 
 
-func _draw_rewarded_tracks(world, world_map: bool, player: Vector3, center: Vector2, ppm: float, origin: Vector2, scale: float, half: float) -> void:
+func _draw_rewarded_tracks(world, world_map: bool, player: Vector3, center: Vector2, ppm: float, origin: Vector2, map_scale: float, half: float) -> void:
 	var races: Array[Dictionary] = world.roads.races
 	for race_i in races.size():
 		var def: Dictionary = races[race_i]
@@ -221,13 +221,13 @@ func _draw_rewarded_tracks(world, world_map: bool, player: Vector3, center: Vect
 		var width := 3.4 if world_map else 2.8
 		var prev := Vector2.INF
 		for i in range(0, pts.size(), 2):
-			var mp := _world_point(pts[i], origin, scale, half) if world_map else _map_point(pts[i], player, center, ppm)
+			var mp := _world_point(pts[i], origin, map_scale, half) if world_map else _map_point(pts[i], player, center, ppm)
 			if prev != Vector2.INF and (world_map or (_on_map(prev) and _on_map(mp))):
 				draw_line(prev, mp, col, width, true)
 			prev = mp
 		var end_i := pts.size() - 1
 		if end_i % 2 != 0:
-			var last := _world_point(pts[end_i], origin, scale, half) if world_map else _map_point(pts[end_i], player, center, ppm)
+			var last := _world_point(pts[end_i], origin, map_scale, half) if world_map else _map_point(pts[end_i], player, center, ppm)
 			if prev != Vector2.INF and (world_map or (_on_map(prev) and _on_map(last))):
 				draw_line(prev, last, col, width, true)
 
@@ -256,8 +256,8 @@ func _reward_outline(rank: int) -> Color:
 	return Color(0.05, 0.16, 0.28, 0.95)
 
 
-func _world_point(p: Vector3, origin: Vector2, scale: float, half: float) -> Vector2:
-	return origin + Vector2(p.x + half, half - p.z) * scale
+func _world_point(p: Vector3, origin: Vector2, map_scale: float, half: float) -> Vector2:
+	return origin + Vector2(p.x + half, half - p.z) * map_scale
 
 
 func _draw_pointer() -> void:
@@ -288,12 +288,12 @@ func _draw_pointer() -> void:
 	if dir.length() < 1.0:
 		dir = Vector2(0, -1)
 	var half := size * 0.5 - Vector2(margin, margin)
-	var scale := 1.0
+	var reach := 1.0
 	if absf(dir.x) > 0.001:
-		scale = minf(scale, half.x / absf(dir.x))
+		reach = minf(reach, half.x / absf(dir.x))
 	if absf(dir.y) > 0.001:
-		scale = minf(scale, half.y / absf(dir.y))
-	_diamond(center + dir.normalized() * dir.length() * scale, Color(1.0, 0.7, 0.25))
+		reach = minf(reach, half.y / absf(dir.y))
+	_diamond(center + dir.normalized() * dir.length() * reach, Color(1.0, 0.7, 0.25))
 
 
 func _diamond(p: Vector2, col: Color) -> void:

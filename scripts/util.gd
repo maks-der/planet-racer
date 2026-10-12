@@ -24,7 +24,7 @@ static func right_from_yaw(yaw: float) -> Vector3:
 static func format_time(t: float) -> String:
 	if t < 0.0:
 		return "--:--"
-	var m := int(t) / 60
+	var m := int(t / 60.0)
 	var s := t - float(m * 60)
 	return "%d:%05.2f" % [m, s]
 

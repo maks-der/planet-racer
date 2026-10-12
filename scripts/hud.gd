@@ -509,21 +509,21 @@ func _update_preview() -> void:
 	if preview_panel == null or world == null:
 		return
 	var blocked := _paused or _map_open or results_panel.visible or mission_panel.visible
-	var show := false
+	var open_preview := false
 	var def: Dictionary = {}
 	if not blocked and world.race.active and not world.race.started:
 		var live: Dictionary = world.race.race
 		def = live
-		show = not live.is_empty()
+		open_preview = not live.is_empty()
 	elif not blocked and not world.race.active and int(world.near_race) >= 0:
 		var races: Array = world.roads.races
 		var idx := int(world.near_race)
 		if idx < races.size():
 			var picked: Dictionary = races[idx]
 			def = picked
-			show = true
-	preview_panel.visible = show
-	if not show:
+			open_preview = true
+	preview_panel.visible = open_preview
+	if not open_preview:
 		return
 	preview_title.text = str(def.name).to_upper()
 	preview_note.text = str(def.blurb)
@@ -596,12 +596,12 @@ func _set_guide(open: bool) -> void:
 func _refresh_medals() -> void:
 	if world == null or _medal_summary == null:
 		return
-	var seed := GameState.world_seed
+	var world_id := GameState.world_seed
 	var gold := 0
 	var silver := 0
 	var bronze := 0
 	for i in _medal_labels.size():
-		var rank := GameState.medal_rank(seed, _race_names[i])
+		var rank := GameState.medal_rank(world_id, _race_names[i])
 		_paint_medal(_medal_labels[i], rank)
 		if rank >= 3:
 			gold += 1

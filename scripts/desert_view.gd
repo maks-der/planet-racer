@@ -210,8 +210,8 @@ static func _place_arches(root: Node3D, roads: RoadNetwork, host: Node = null) -
 					basis.y *= radius * 0.82
 					basis.z *= 15.5
 					xforms.append(Transform3D(basis, Vector3(pos.x, pos.y + 0.35, pos.z)))
-					for sign in [-1.0, 1.0]:
-						var leg: Vector3 = side * float(sign) * 0.92 * radius
+					for side_sign in [-1.0, 1.0]:
+						var leg: Vector3 = side * float(side_sign) * 0.92 * radius
 						solids.append({
 							"x": pos.x + leg.x,
 							"y": pos.y + radius * 0.32,
@@ -258,8 +258,8 @@ static func _place_posts(root: Node3D, roads: RoadNetwork, host: Node = null) ->
 			if side.length_squared() < 0.0001:
 				side = Vector3.RIGHT
 			side = side.normalized()
-			for sign in [-1.0, 1.0]:
-				var pos: Vector3 = pts[i] + side * shoulder * float(sign)
+			for side_sign in [-1.0, 1.0]:
+				var pos: Vector3 = pts[i] + side * shoulder * float(side_sign)
 				if roads.on_roadway(pos.x, pos.z):
 					continue
 				var foot := roads.terrain.height_at(pos.x, pos.z)

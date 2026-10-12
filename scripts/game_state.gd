@@ -138,26 +138,26 @@ func _ensure_inputs() -> void:
 	_axis("brake", JOY_AXIS_TRIGGER_LEFT, 1.0)
 
 
-func _action(name: String, keys: Array) -> void:
-	if not InputMap.has_action(name):
-		InputMap.add_action(name, 0.2)
+func _action(action_name: String, keys: Array) -> void:
+	if not InputMap.has_action(action_name):
+		InputMap.add_action(action_name, 0.2)
 	for key in keys:
 		var ev := InputEventKey.new()
 		ev.physical_keycode = key
-		InputMap.action_add_event(name, ev)
+		InputMap.action_add_event(action_name, ev)
 
 
-func _joy_button(name: String, button: JoyButton) -> void:
+func _joy_button(action_name: String, button: JoyButton) -> void:
 	var ev := InputEventJoypadButton.new()
 	ev.button_index = button
-	InputMap.action_add_event(name, ev)
+	InputMap.action_add_event(action_name, ev)
 
 
-func _axis(name: String, axis: JoyAxis, value: float) -> void:
+func _axis(action_name: String, axis: JoyAxis, value: float) -> void:
 	var ev := InputEventJoypadMotion.new()
 	ev.axis = axis
 	ev.axis_value = value
-	InputMap.action_add_event(name, ev)
+	InputMap.action_add_event(action_name, ev)
 
 
 func begin_new_world() -> void:
@@ -186,23 +186,23 @@ func set_colors(body: Color, trim: Color) -> void:
 	save_car()
 
 
-func remember_time(seed: int, race_name: String, time: float) -> bool:
-	var key := "%d|%s" % [seed, race_name]
+func remember_time(world_id: int, race_name: String, time: float) -> bool:
+	var key := "%d|%s" % [world_id, race_name]
 	if not best_times.has(key) or time < float(best_times[key]):
 		best_times[key] = time
 		return true
 	return false
 
 
-func best_time(seed: int, race_name: String) -> float:
-	var key := "%d|%s" % [seed, race_name]
+func best_time(world_id: int, race_name: String) -> float:
+	var key := "%d|%s" % [world_id, race_name]
 	if best_times.has(key):
 		return float(best_times[key])
 	return -1.0
 
 
-func medal_rank(seed: int, race_name: String) -> int:
-	return int(medals.get(_medal_key(seed, race_name), 0))
+func medal_rank(world_id: int, race_name: String) -> int:
+	return int(medals.get(_medal_key(world_id, race_name), 0))
 
 
 func medal_name(rank: int) -> String:
@@ -215,8 +215,8 @@ func medal_name(rank: int) -> String:
 	return ""
 
 
-func gold_count(seed: int) -> int:
-	var prefix := "%d|" % seed
+func gold_count(world_id: int) -> int:
+	var prefix := "%d|" % world_id
 	var count := 0
 	for key in medals.keys():
 		if str(key).begins_with(prefix) and int(medals[key]) >= 3:
@@ -224,7 +224,7 @@ func gold_count(seed: int) -> int:
 	return count
 
 
-func award_medal(seed: int, race_name: String, place: int) -> void:
+func award_medal(world_id: int, race_name: String, place: int) -> void:
 	just_invited = false
 	var rank := 0
 	if place == 1:
@@ -235,20 +235,20 @@ func award_medal(seed: int, race_name: String, place: int) -> void:
 		rank = 1
 	if rank == 0:
 		return
-	var key := _medal_key(seed, race_name)
+	var key := _medal_key(world_id, race_name)
 	if rank <= int(medals.get(key, 0)):
 		return
-	var before := gold_count(seed)
+	var before := gold_count(world_id)
 	medals[key] = rank
 	if desert_seed > 0 and gold_count(desert_seed) >= 4:
 		ice_unlocked = true
 	_save_medals()
 	_save_progress()
-	just_invited = before < 4 and gold_count(seed) >= 4 and seed == desert_seed
+	just_invited = before < 4 and gold_count(world_id) >= 4 and world_id == desert_seed
 
 
-func _medal_key(seed: int, race_name: String) -> String:
-	return "%d|%s" % [seed, race_name]
+func _medal_key(world_id: int, race_name: String) -> String:
+	return "%d|%s" % [world_id, race_name]
 
 
 func _save_medals() -> void:

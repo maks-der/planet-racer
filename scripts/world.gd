@@ -89,11 +89,11 @@ func _ready() -> void:
 		await get_tree().process_frame
 	arrival.set_progress(0.46, "LAYING THE RACE ROADS")
 	var field := terrain
-	var seed := GameState.world_seed
+	var world_id := GameState.world_seed
 	_roads_done = false
 	WorkerThreadPool.add_task(func() -> void:
 		var net := RoadNetwork.new()
-		net.generate(field, seed)
+		net.generate(field, world_id)
 		call_deferred("_mark_highlands")
 		field.raise_highlands()
 		field.cut_road_canyons(net.edges)
@@ -745,27 +745,27 @@ func _fix_mat(color: Color) -> StandardMaterial3D:
 	return mat
 
 
-func _fix_part(holder: Node3D, mesh: Mesh, mat: Material, pos: Vector3, basis: Basis = Basis.IDENTITY) -> MeshInstance3D:
+func _fix_part(holder: Node3D, mesh: Mesh, mat: Material, pos: Vector3, part_basis: Basis = Basis.IDENTITY) -> MeshInstance3D:
 	var node := MeshInstance3D.new()
 	node.mesh = mesh
 	node.material_override = mat
 	node.position = pos
-	node.basis = basis
+	node.basis = part_basis
 	holder.add_child(node)
 	return node
 
 
 func _fix_sign(holder: Node3D, pos: Vector3, yaw: float) -> void:
-	var sign := Label3D.new()
-	sign.text = "FIX"
-	sign.font_size = 64
-	sign.pixel_size = 0.018
-	sign.position = pos
-	sign.rotation.y = yaw
-	sign.modulate = Color(0.95, 0.88, 0.7)
-	sign.outline_size = 8
-	sign.outline_modulate = Color(0.28, 0.16, 0.08)
-	holder.add_child(sign)
+	var label := Label3D.new()
+	label.text = "FIX"
+	label.font_size = 64
+	label.pixel_size = 0.018
+	label.position = pos
+	label.rotation.y = yaw
+	label.modulate = Color(0.95, 0.88, 0.7)
+	label.outline_size = 8
+	label.outline_modulate = Color(0.28, 0.16, 0.08)
+	holder.add_child(label)
 
 
 func _heal_at_stations() -> void:

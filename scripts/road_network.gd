@@ -17,15 +17,14 @@ var tunnel_points := 0
 var bridge_points := 0
 var shortcut_edges := 0
 
-var _adj: Array = []
 var _hash: Dictionary = {}
 var _tracks: Array[Dictionary] = []
 var _rng := RandomNumberGenerator.new()
 
 
-func generate(field: TerrainField, seed: int) -> void:
+func generate(field: TerrainField, noise_seed: int) -> void:
 	terrain = field
-	_rng.seed = seed + 501
+	_rng.seed = noise_seed + 501
 	edges.clear()
 	races.clear()
 	_tracks.clear()
