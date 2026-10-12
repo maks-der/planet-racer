@@ -4,7 +4,7 @@
 
 [sub_resource type="ShaderMaterial" id="mat_column"]
 shader = ExtResource("1_shader")
-shader_parameter/albedo = Color(0.2, 0.85, 1, 0.4)
+shader_parameter/albedo = Color(0.2, 0.85, 1, 0.16)
 shader_parameter/half_height = 14.0
 
 [sub_resource type="CylinderMesh" id="mesh_column"]
@@ -12,6 +12,8 @@ top_radius = 22.0
 bottom_radius = 22.0
 height = 28.0
 radial_segments = 32
+cap_top = false
+cap_bottom = false
 
 [node name="Gate" type="Node3D"]
 

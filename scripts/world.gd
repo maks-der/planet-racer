@@ -599,73 +599,111 @@ func _build_fix_arch(root: Node3D, pos: Vector3, dir: Vector3, side: Vector3) ->
 	holder.position = pos
 	holder.basis = Basis(side, Vector3.UP, -dir)
 	root.add_child(holder)
-	var tint := Color(0.28, 0.95, 0.48)
+	var clay := _fix_mat(Color(0.78, 0.52, 0.31))
+	var wash := _fix_mat(Color(0.86, 0.7, 0.48))
+	var shade := _fix_mat(Color(0.28, 0.16, 0.1))
+	var wood := _fix_mat(Color(0.4, 0.25, 0.13))
+	var canvas := _fix_mat(Color(0.9, 0.78, 0.52))
+	var dirt := _fix_mat(Color(0.55, 0.38, 0.22))
+	var arch_r := 4.35
+	var voussoir := BoxMesh.new()
+	voussoir.size = Vector3(1.22, 0.95, 2.4)
+	var segments := 8
+	for i in segments:
+		var a := lerpf(0.42, PI - 0.42, (float(i) + 0.5) / float(segments))
+		var radial := Vector3(cos(a), sin(a), 0.0)
+		var tangent := Vector3(-sin(a), cos(a), 0.0)
+		_fix_part(holder, voussoir, clay, radial * arch_r, Basis(tangent, radial, Vector3(0.0, 0.0, 1.0)))
+	var pier := BoxMesh.new()
+	pier.size = Vector3(1.9, 2.2, 2.5)
+	_fix_part(holder, pier, clay, Vector3(-4.2, 1.1, 0.0))
+	_fix_part(holder, pier, clay, Vector3(4.2, 1.1, 0.0))
+	var hut := BoxMesh.new()
+	hut.size = Vector3(5.0, 3.1, 5.2)
+	var hut_at := Vector3(7.65, 1.55, 0.15)
+	_fix_part(holder, hut, wash, hut_at)
+	var roof := BoxMesh.new()
+	roof.size = Vector3(5.8, 0.28, 6.0)
+	_fix_part(holder, roof, clay, Vector3(hut_at.x, 3.22, hut_at.z))
+	var dome_mesh := SphereMesh.new()
+	dome_mesh.radius = 1.5
+	dome_mesh.height = 3.0
+	var dome := _fix_part(holder, dome_mesh, clay, Vector3(hut_at.x, 3.45, hut_at.z))
+	dome.scale = Vector3(1.15, 0.5, 1.15)
+	var door := BoxMesh.new()
+	door.size = Vector3(0.18, 2.05, 1.15)
+	_fix_part(holder, door, shade, Vector3(5.22, 1.02, hut_at.z))
+	var lintel := BoxMesh.new()
+	lintel.size = Vector3(0.28, 0.16, 1.55)
+	_fix_part(holder, lintel, wood, Vector3(5.12, 2.12, hut_at.z))
+	var window := BoxMesh.new()
+	window.size = Vector3(0.85, 0.62, 0.16)
+	_fix_part(holder, window, shade, Vector3(hut_at.x, 1.95, 2.82))
+	var awning := BoxMesh.new()
+	awning.size = Vector3(3.4, 0.06, 1.7)
+	_fix_part(holder, awning, canvas, Vector3(hut_at.x, 2.65, 3.55))
+	var pole := CylinderMesh.new()
+	pole.top_radius = 0.06
+	pole.bottom_radius = 0.08
+	pole.height = 2.55
+	_fix_part(holder, pole, wood, Vector3(hut_at.x - 1.45, 1.28, 4.25))
+	_fix_part(holder, pole, wood, Vector3(hut_at.x + 1.45, 1.28, 4.25))
+	var jar := CylinderMesh.new()
+	jar.top_radius = 0.22
+	jar.bottom_radius = 0.28
+	jar.height = 0.55
+	_fix_part(holder, jar, clay, Vector3(6.15, 0.28, 2.15))
+	_fix_part(holder, jar, clay, Vector3(6.55, 0.22, 2.55))
+	var chimney := CylinderMesh.new()
+	chimney.top_radius = 0.18
+	chimney.bottom_radius = 0.24
+	chimney.height = 0.85
+	_fix_part(holder, chimney, clay, Vector3(9.3, 3.75, -0.7))
+	var pad := BoxMesh.new()
+	pad.size = Vector3(14.5, 0.08, 8.5)
+	_fix_part(holder, pad, dirt, Vector3(3.4, 0.04, 0.3))
+	var board := BoxMesh.new()
+	board.size = Vector3(2.5, 0.72, 0.12)
+	_fix_part(holder, board, wood, Vector3(0.0, 5.2, 0.0))
+	_fix_sign(holder, Vector3(0.0, 5.2, 0.08), 0.0)
+	_fix_sign(holder, Vector3(0.0, 5.2, -0.08), PI)
+	var lamp := OmniLight3D.new()
+	lamp.light_color = Color(1.0, 0.72, 0.42)
+	lamp.light_energy = 0.55
+	lamp.omni_range = 7.0
+	lamp.position = Vector3(5.0, 2.3, hut_at.z)
+	holder.add_child(lamp)
+
+
+func _fix_mat(color: Color) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = tint
-	mat.emission_enabled = true
-	mat.emission = tint
-	mat.emission_energy_multiplier = 2.2
-	var post := CylinderMesh.new()
-	post.top_radius = 0.28
-	post.bottom_radius = 0.34
-	post.height = 5.2
-	for x in [-8.0, 8.0]:
-		var pole := MeshInstance3D.new()
-		pole.mesh = post
-		pole.position = Vector3(x, 2.6, 0.0)
-		pole.material_override = mat
-		holder.add_child(pole)
-	var bar := BoxMesh.new()
-	bar.size = Vector3(16.6, 0.32, 0.42)
-	var beam := MeshInstance3D.new()
-	beam.mesh = bar
-	beam.position = Vector3(0.0, 5.15, 0.0)
-	beam.material_override = mat
-	holder.add_child(beam)
-	var rib := BoxMesh.new()
-	rib.size = Vector3(0.22, 1.15, 0.22)
-	for x in [-6.2, -3.1, 3.1, 6.2]:
-		var brace := MeshInstance3D.new()
-		brace.mesh = rib
-		brace.position = Vector3(x, 4.55, 0.0)
-		brace.material_override = mat
-		holder.add_child(brace)
-	var kiosk_mesh := BoxMesh.new()
-	kiosk_mesh.size = Vector3(2.4, 2.2, 1.6)
-	var kiosk := MeshInstance3D.new()
-	kiosk.mesh = kiosk_mesh
-	kiosk.position = Vector3(11.2, 1.1, 0.0)
-	var kiosk_mat := StandardMaterial3D.new()
-	kiosk_mat.albedo_color = Color(0.08, 0.16, 0.12)
-	kiosk_mat.emission_enabled = true
-	kiosk_mat.emission = tint
-	kiosk_mat.emission_energy_multiplier = 0.35
-	kiosk.material_override = kiosk_mat
-	holder.add_child(kiosk)
-	var pad_mesh := BoxMesh.new()
-	pad_mesh.size = Vector3(18.0, 0.08, 10.0)
-	var pad := MeshInstance3D.new()
-	pad.mesh = pad_mesh
-	pad.position = Vector3(1.5, 0.04, 0.0)
-	var pad_mat := StandardMaterial3D.new()
-	pad_mat.albedo_color = Color(0.12, 0.22, 0.16)
-	pad.material_override = pad_mat
-	holder.add_child(pad)
+	mat.albedo_color = color
+	mat.roughness = 0.96
+	mat.metallic = 0.0
+	return mat
+
+
+func _fix_part(holder: Node3D, mesh: Mesh, mat: Material, pos: Vector3, basis: Basis = Basis.IDENTITY) -> MeshInstance3D:
+	var node := MeshInstance3D.new()
+	node.mesh = mesh
+	node.material_override = mat
+	node.position = pos
+	node.basis = basis
+	holder.add_child(node)
+	return node
+
+
+func _fix_sign(holder: Node3D, pos: Vector3, yaw: float) -> void:
 	var sign := Label3D.new()
 	sign.text = "FIX"
-	sign.font_size = 96
-	sign.position = Vector3(0.0, 5.7, 0.0)
-	sign.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	sign.modulate = tint
-	sign.outline_size = 12
-	sign.pixel_size = 0.01
+	sign.font_size = 64
+	sign.pixel_size = 0.018
+	sign.position = pos
+	sign.rotation.y = yaw
+	sign.modulate = Color(0.95, 0.88, 0.7)
+	sign.outline_size = 8
+	sign.outline_modulate = Color(0.28, 0.16, 0.08)
 	holder.add_child(sign)
-	var lamp := OmniLight3D.new()
-	lamp.light_color = tint
-	lamp.light_energy = 2.4
-	lamp.omni_range = 18.0
-	lamp.position = Vector3(0.0, 4.6, 0.0)
-	holder.add_child(lamp)
 
 
 func _heal_at_stations() -> void:
@@ -705,7 +743,7 @@ func _build_gates(def: Dictionary) -> void:
 		var column := holder.get_node("Column") as MeshInstance3D
 		var cyl := column.mesh as CylinderMesh
 		mat.shader = CheckpointShader
-		mat.set_shader_parameter("albedo", Color(tint.r, tint.g, tint.b, 0.4))
+		mat.set_shader_parameter("albedo", Color(tint.r, tint.g, tint.b, 0.16))
 		mat.set_shader_parameter("half_height", cyl.height * 0.5)
 		gate_mats.append(mat)
 		for mesh_node in holder.find_children("*", "MeshInstance3D"):
@@ -721,7 +759,7 @@ func _highlight_gate() -> void:
 	var idx := player.cp_index
 	for i in gate_mats.size():
 		var color: Color = gate_mats[i].get_shader_parameter("albedo")
-		color.a = 0.5 if i == idx else 0.32
+		color.a = 0.24 if i == idx else 0.14
 		gate_mats[i].set_shader_parameter("albedo", color)
 
 

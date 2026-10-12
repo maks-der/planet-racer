@@ -1,7 +1,7 @@
 shader_type spatial;
 render_mode cull_disabled, diffuse_lambert, specular_disabled, shadows_disabled, depth_draw_never;
 
-uniform vec4 albedo : source_color = vec4(0.2, 0.85, 1.0, 0.4);
+uniform vec4 albedo : source_color = vec4(0.2, 0.85, 1.0, 0.16);
 uniform float half_height = 14.0;
 varying float height_t;
 
