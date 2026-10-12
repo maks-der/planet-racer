@@ -1,5 +1,7 @@
 shader_type spatial;
-render_mode diffuse_burley, specular_disabled, cull_back;
+render_mode diffuse_burley, cull_back;
+
+uniform float frozen = 0.0;
 
 void fragment() {
 	float u = UV.x;
@@ -21,8 +23,19 @@ void fragment() {
 	float stones = step(0.84, pebbles) * (1.0 - crown * 0.7);
 	albedo = mix(albedo, gravel, stones * 0.5);
 	albedo *= 0.9 + grain * 0.16 + wash * 0.05;
+	if (frozen > 0.5) {
+		vec3 snow = vec3(0.96, 0.98, 1.0);
+		vec3 ice = vec3(0.7, 0.84, 0.94);
+		vec3 rut_ice = vec3(0.4, 0.58, 0.74);
+		albedo = mix(snow, ice, crown);
+		albedo = mix(albedo, rut_ice, ruts * 0.75);
+		albedo *= 0.94 + grain * 0.08;
+		ROUGHNESS = mix(0.72, 0.46, crown);
+		SPECULAR = 0.32;
+	} else {
+		ROUGHNESS = mix(1.0, 0.9, crown);
+		SPECULAR = 0.04;
+	}
 	ALBEDO = albedo;
-	ROUGHNESS = mix(1.0, 0.9, crown);
 	METALLIC = 0.0;
-	SPECULAR = 0.04;
 }

@@ -87,6 +87,10 @@ const SWATCHES: Array[Color] = [
 ]
 
 var world_seed: int = 0
+var desert_seed: int = 0
+var ice_seed: int = 0
+var planet := "desert"
+var ice_unlocked := false
 var preset_index: int = 0
 var primary := Color("14e6ff")
 var accent := Color("ff8a1e")
@@ -99,6 +103,7 @@ func _ready() -> void:
 	_ensure_inputs()
 	_load_car()
 	_load_medals()
+	_load_progress()
 
 
 func _ensure_inputs() -> void:
@@ -156,10 +161,14 @@ func _axis(name: String, axis: JoyAxis, value: float) -> void:
 
 
 func begin_new_world() -> void:
-	world_seed = randi() % 999983
-	if world_seed < 1:
-		world_seed = 1
+	desert_seed = randi() % 999983
+	if desert_seed < 1:
+		desert_seed = 1
+	ice_seed = 0
+	world_seed = desert_seed
+	planet = "desert"
 	best_times.clear()
+	_save_progress()
 
 
 func preset() -> Dictionary:
@@ -231,8 +240,11 @@ func award_medal(seed: int, race_name: String, place: int) -> void:
 		return
 	var before := gold_count(seed)
 	medals[key] = rank
+	if desert_seed > 0 and gold_count(desert_seed) >= 4:
+		ice_unlocked = true
 	_save_medals()
-	just_invited = before < 4 and gold_count(seed) >= 4
+	_save_progress()
+	just_invited = before < 4 and gold_count(seed) >= 4 and seed == desert_seed
 
 
 func _medal_key(seed: int, race_name: String) -> String:
@@ -255,6 +267,55 @@ func _load_medals() -> void:
 		return
 	for key in cf.get_section_keys("medals"):
 		medals[key] = int(cf.get_value("medals", key, 0))
+
+
+func planet_title() -> String:
+	if planet == "ice":
+		return "FROST REACH"
+	return "VERMILION WASTES"
+
+
+func set_planet(id: String) -> void:
+	if id != "desert" and id != "ice":
+		return
+	planet = id
+	if planet == "ice":
+		if ice_seed < 1:
+			var base := desert_seed if desert_seed > 0 else world_seed
+			ice_seed = (base * 17 + 91) % 999983
+			if ice_seed < 1:
+				ice_seed = 3
+		world_seed = ice_seed
+	else:
+		if desert_seed < 1:
+			desert_seed = world_seed if world_seed > 0 else 1
+		world_seed = desert_seed
+	_save_progress()
+
+
+func _save_progress() -> void:
+	var cf := ConfigFile.new()
+	cf.set_value("progress", "planet", planet)
+	cf.set_value("progress", "desert_seed", desert_seed)
+	cf.set_value("progress", "ice_seed", ice_seed)
+	cf.set_value("progress", "ice_unlocked", ice_unlocked)
+	cf.set_value("progress", "world_seed", world_seed)
+	cf.save("user://progress.cfg")
+
+
+func _load_progress() -> void:
+	var cf := ConfigFile.new()
+	if cf.load("user://progress.cfg") != OK:
+		return
+	planet = str(cf.get_value("progress", "planet", "desert"))
+	if planet != "ice":
+		planet = "desert"
+	desert_seed = int(cf.get_value("progress", "desert_seed", 0))
+	ice_seed = int(cf.get_value("progress", "ice_seed", 0))
+	ice_unlocked = bool(cf.get_value("progress", "ice_unlocked", false))
+	world_seed = int(cf.get_value("progress", "world_seed", 0))
+	if desert_seed < 1 and world_seed > 0 and planet == "desert":
+		desert_seed = world_seed
 
 
 func save_car() -> void:

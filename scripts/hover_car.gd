@@ -593,71 +593,77 @@ func _setup_bolts() -> void:
 
 
 func _update_bolts() -> void:
-	if ai:
-		if _bolt:
-			_bolt.visible = false
-		if _bolt_light:
-			_bolt_light.light_energy = 0.0
+	if ai or _crippled():
+		_hide_bolts()
 		return
 	if _bolt_mesh == null or world == null:
 		return
-	var moving := (not airborne) and controls_enabled and speed_mps() > 14.0
+	var speed := speed_mps()
+	var moving := (not airborne) and controls_enabled and speed > 8.0
 	if not moving:
 		_arc_live = false
-		_arc2_live = false
-		_bolt.visible = false
-		_bolt_light.light_energy = 0.0
+		_hide_bolts()
 		return
+	var pace := clampf((speed - 8.0) / 90.0, 0.0, 1.0)
 	var dt := get_physics_process_delta_time()
 	_arc_timer -= dt
 	if _arc_timer <= 0.0:
-		if randf() < 0.42:
+		if randf() > lerpf(0.34, 0.94, pace):
 			_arc_live = false
-			_arc2_live = false
-			_arc_timer = randf_range(0.05, 0.16)
+			_arc_timer = lerpf(0.24, 0.04, pace)
 		else:
 			_arc_live = true
-			_arc_timer = randf_range(0.028, 0.07)
+			_arc_timer = lerpf(0.18, 0.028, pace)
 			_arc_seed = randi()
-			_arc_from = Vector3(randf_range(-0.7, 0.7), randf_range(0.02, 0.2), randf_range(-1.05, 0.45))
-			_arc_to = Vector3(randf_range(-1.45, 1.45), 0.0, randf_range(-1.7, 1.15))
-			_arc2_live = randf() < 0.38
-			if _arc2_live:
-				_arc2_from = Vector3(randf_range(-0.7, 0.7), randf_range(0.02, 0.18), randf_range(-0.8, 0.6))
-				_arc2_to = Vector3(randf_range(-1.2, 1.2), 0.0, randf_range(-1.4, 0.9))
-	var flicker := int(_time * 78.0) % 5 == 0
-	if not _arc_live or flicker:
-		_bolt.visible = false
-		_bolt_light.light_energy = 0.0
+	if not _arc_live:
+		_hide_bolts()
 		return
 	var rng := RandomNumberGenerator.new()
-	rng.seed = _arc_seed + int(_time * 46.0)
+	rng.seed = _arc_seed + int(_time * lerpf(16.0, 72.0, pace))
 	_bolt_mesh.clear_surfaces()
 	_bolt.visible = true
-	_draw_discharge(_arc_from, _arc_to, rng, 0.42)
-	if _arc2_live:
-		_draw_discharge(_arc2_from, _arc2_to, rng, 0.28)
-	_draw_side_discharge(-1.0, rng, 0.2)
-	_draw_side_discharge(1.0, rng, 0.2)
-	_bolt_light.position = _arc_from
-	_bolt_light.light_energy = rng.randf_range(1.6, 4.4)
+	var bolts := 1
+	if pace > 0.3:
+		bolts = 2
+	if pace > 0.55:
+		bolts = 4
+	if pace > 0.82:
+		bolts = 6
+	for n in bolts:
+		if n < 2:
+			var from := Vector3(rng.randf_range(-0.55, 0.55), rng.randf_range(0.02, 0.18), rng.randf_range(-0.9, 0.4))
+			var foot := Vector3(rng.randf_range(-1.1, 1.1), 0.0, rng.randf_range(-1.3, 0.8))
+			_draw_discharge(from, foot, rng, lerpf(0.08, 0.48, pace), pace)
+		else:
+			var side := -1.0 if n % 2 == 0 else 1.0
+			_draw_side_discharge(side, rng, lerpf(0.06, 0.28, pace), pace)
+	_bolt_light.position = Vector3(0.0, 0.2, 0.0)
+	_bolt_light.light_energy = lerpf(0.25, 4.6, pace) * rng.randf_range(0.65, 1.0)
 
 
-func _draw_discharge(local_from: Vector3, local_foot: Vector3, rng: RandomNumberGenerator, amp: float) -> void:
+func _hide_bolts() -> void:
+	_arc_live = false
+	_arc2_live = false
+	if _bolt:
+		_bolt.visible = false
+	if _bolt_light:
+		_bolt_light.light_energy = 0.0
+
+
+func _draw_discharge(local_from: Vector3, local_foot: Vector3, rng: RandomNumberGenerator, amp: float, strength: float) -> void:
 	var from_g := global_position + global_transform.basis * local_from
 	var foot_g := global_position + global_transform.basis * Vector3(local_foot.x, 0.0, local_foot.z)
 	var surface: Dictionary = world.sample_surface(foot_g)
 	foot_g.y = float(surface.height) + 0.05
 	var pts := _bolt_points(to_local(from_g), to_local(foot_g), rng, amp)
-	_bolt_strip(pts, 0.055, Color(0.35, 0.72, 1.0, 0.34))
-	_bolt_strip(pts, 0.012, Color(0.96, 0.98, 1.0, 0.98))
-	if rng.randf() < 0.8 and pts.size() > 4:
-		_bolt_branch(pts, rng)
-	if rng.randf() < 0.35 and pts.size() > 5:
+	var width := lerpf(0.018, 0.055, strength)
+	_bolt_strip(pts, width, Color(0.35, 0.72, 1.0, lerpf(0.12, 0.4, strength)))
+	_bolt_strip(pts, width * 0.28, Color(0.96, 0.98, 1.0, lerpf(0.28, 0.98, strength)))
+	if rng.randf() < lerpf(0.15, 0.85, strength) and pts.size() > 4:
 		_bolt_branch(pts, rng)
 
 
-func _draw_side_discharge(side_sign: float, rng: RandomNumberGenerator, amp: float) -> void:
+func _draw_side_discharge(side_sign: float, rng: RandomNumberGenerator, amp: float, strength: float) -> void:
 	var along := rng.randf_range(-1.15, 0.85)
 	var local_from := Vector3(side_sign * rng.randf_range(0.92, 1.08), rng.randf_range(0.22, 0.58), along)
 	var from_g := global_position + global_transform.basis * local_from
@@ -668,9 +674,10 @@ func _draw_side_discharge(side_sign: float, rng: RandomNumberGenerator, amp: flo
 	foot_g.y = float(surface.height) + 0.05
 	var knee_g := Vector3(from_g.x, lerpf(from_g.y, foot_g.y, 0.78), from_g.z)
 	var pts := _bolt_curve(to_local(from_g), to_local(knee_g), to_local(foot_g), rng, amp)
-	_bolt_strip(pts, 0.042, Color(0.35, 0.72, 1.0, 0.3))
-	_bolt_strip(pts, 0.01, Color(0.96, 0.98, 1.0, 0.94))
-	if rng.randf() < 0.55 and pts.size() > 4:
+	var width := lerpf(0.012, 0.04, strength)
+	_bolt_strip(pts, width, Color(0.35, 0.72, 1.0, lerpf(0.1, 0.32, strength)))
+	_bolt_strip(pts, width * 0.3, Color(0.96, 0.98, 1.0, lerpf(0.22, 0.9, strength)))
+	if rng.randf() < lerpf(0.05, 0.5, strength) and pts.size() > 4:
 		_bolt_branch(pts, rng)
 
 

@@ -13,18 +13,27 @@ var _ship: Node3D
 var _status: Label
 var _bar: ProgressBar
 var _veil: ColorRect
+var _wash := Color(0.45, 0.28, 0.14)
 var _approach_from := Vector3(9.4, 1.6, 7.2)
 var _approach_to := Vector3(4.6, 0.85, 3.4)
 
 
 func _ready() -> void:
 	position = Vector3(0.0, 16000.0, 0.0)
+	if GameState.planet == "ice":
+		_wash = Color(0.75, 0.86, 0.95)
 	_planet = get_node_or_null("DesertPlanet") as Node3D
 	_ship = get_node_or_null("Starship") as Node3D
 	_cam = get_node_or_null("Camera3D") as Camera3D
 	if _planet:
 		_planet.position = Vector3(-3.1, 0.15, -0.4)
 		_planet.rotation.y = PI
+		if GameState.planet == "ice":
+			var globe := _planet.get_node_or_null("Globe") as MeshInstance3D
+			if globe:
+				var mat := ShaderMaterial.new()
+				mat.shader = load("res://shaders/ice_planet.gdshader")
+				globe.material_override = mat
 	if _ship:
 		_ship.position = _approach_from
 	_build_ui()
@@ -42,12 +51,12 @@ func play_out(switch_to_world: Callable) -> void:
 	var alpha := 0.0
 	while alpha < 1.0:
 		alpha = minf(1.0, alpha + get_process_delta_time() * 2.4)
-		_veil.color = Color(0.45, 0.28, 0.14, alpha)
+		_veil.color = Color(_wash.r, _wash.g, _wash.b, alpha)
 		await get_tree().process_frame
 	switch_to_world.call()
 	while alpha > 0.0:
 		alpha = maxf(0.0, alpha - get_process_delta_time() * 1.8)
-		_veil.color = Color(0.45, 0.28, 0.14, alpha)
+		_veil.color = Color(_wash.r, _wash.g, _wash.b, alpha)
 		await get_tree().process_frame
 	queue_free()
 
@@ -123,7 +132,7 @@ func _build_ui() -> void:
 	kicker.add_theme_color_override("font_color", Color(0.55, 0.9, 1.0))
 	box.add_child(kicker)
 	var title := Label.new()
-	title.text = "VERMILION WASTES"
+	title.text = GameState.planet_title()
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 28)
 	title.add_theme_color_override("font_color", Color(0.95, 0.82, 0.62))

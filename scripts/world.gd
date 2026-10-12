@@ -34,10 +34,12 @@ var _snap_camera := false
 var storm_level := 0.0
 var port_position := Vector3.ZERO
 var port_yaw := 0.0
+var near_port := false
 var fix_stations: Array[Vector3] = []
 var _sky_mat: ShaderMaterial
 var _storm_fx: GPUParticles3D
 var _wind_fx: GPUParticles3D
+var _snow_fx: GPUParticles3D
 var _storm_flash := 0.0
 var _roads_done := false
 var _finish_until := 0
@@ -76,11 +78,13 @@ func _ready() -> void:
 	for _warm in 8:
 		await get_tree().process_frame
 	terrain = TerrainField.new()
+	terrain.planet = GameState.planet
 	terrain.begin(GameState.world_seed)
 	var band := 4
+	var ice := GameState.planet == "ice"
 	for z in range(0, TerrainField.RES, band):
 		terrain.write_rows(z, mini(z + band, TerrainField.RES))
-		arrival.set_progress(0.08 + 0.36 * float(z) / float(TerrainField.RES), "MAPPING THE DUNES")
+		arrival.set_progress(0.08 + 0.36 * float(z) / float(TerrainField.RES), "MAPPING THE ICE" if ice else "MAPPING THE DUNES")
 		await get_tree().process_frame
 	arrival.set_progress(0.46, "LAYING THE RACE ROADS")
 	var field := terrain
@@ -134,7 +138,11 @@ func _ready() -> void:
 	while arrival.elapsed < arrival.voyage_time:
 		await get_tree().process_frame
 	await arrival.play_out(func() -> void:
-		_env.environment = _desert_environment()
+		_env.environment = _ice_environment() if GameState.planet == "ice" else _desert_environment()
+		if GameState.planet == "ice":
+			_sun.light_color = Color(1.0, 0.97, 0.93)
+			_sun.light_energy = 1.7
+			_sun.rotation_degrees = Vector3(-52, 28, 0)
 		_sun.visible = true
 		cam.current = true
 	)
@@ -143,7 +151,13 @@ func _ready() -> void:
 	hud = GameHud.new()
 	add_child(hud)
 	hud.bind(self)
-	_build_storm()
+	if GameState.planet == "ice":
+		_build_snow()
+	else:
+		_build_storm()
+	var console := DebugConsole.new()
+	console.world = self
+	add_child(console)
 	if _smoke:
 		player.smoke_drive = true
 		_run_smoke()
@@ -151,7 +165,8 @@ func _ready() -> void:
 
 func _mark_highlands() -> void:
 	if arrival != null:
-		arrival.set_progress(0.48, "CUTTING CANYONS THROUGH THE HIGHLANDS")
+		var label := "CUTTING ROADS THROUGH THE PLATEAUS" if GameState.planet == "ice" else "CUTTING CANYONS THROUGH THE HIGHLANDS"
+		arrival.set_progress(0.48, label)
 
 
 func _finish_roads(net: RoadNetwork) -> void:
@@ -284,6 +299,8 @@ func _physics_process(dt: float) -> void:
 		_update_prompt()
 		if near_race >= 0 and Input.is_action_just_pressed("interact") and not player.airborne:
 			start_race(near_race)
+		elif near_port and Input.is_action_just_pressed("interact") and not player.airborne and hud:
+			hud.open_port()
 		_remember_safe(dt)
 	if player and not race.active:
 		safe_yaw = player.yaw
@@ -364,6 +381,55 @@ func _desert_environment() -> Environment:
 	env.fog_aerial_perspective = 0.45
 	env.fog_sky_affect = 0.4
 	return env
+
+
+func _ice_environment() -> Environment:
+	var env := Environment.new()
+	env.background_mode = Environment.BG_SKY
+	var sky := Sky.new()
+	var sky_mat := ShaderMaterial.new()
+	sky_mat.shader = load("res://shaders/clouds.gdshader")
+	sky_mat.set_shader_parameter("sky_top", Color(0.14, 0.4, 0.86))
+	sky_mat.set_shader_parameter("sky_horizon", Color(0.58, 0.76, 0.94))
+	sky_mat.set_shader_parameter("ground_horizon", Color(0.78, 0.88, 0.96))
+	sky_mat.set_shader_parameter("ground_bottom", Color(0.42, 0.6, 0.78))
+	sky_mat.set_shader_parameter("cloud_cover", 0.78)
+	sky_mat.set_shader_parameter("cold", 1.0)
+	var blow := terrain.wind_dir
+	sky_mat.set_shader_parameter("wind_dir", Vector2(blow.x, blow.z))
+	_sky_mat = sky_mat
+	sky.sky_material = sky_mat
+	env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	env.ambient_light_energy = 0.82
+	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.glow_enabled = true
+	env.glow_intensity = 0.35
+	env.glow_strength = 0.7
+	env.glow_bloom = 0.08
+	env.glow_hdr_threshold = 1.2
+	env.fog_enabled = true
+	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
+	env.fog_density = 0.00032
+	env.fog_light_color = Color(0.72, 0.84, 0.96)
+	env.fog_aerial_perspective = 0.5
+	env.fog_sky_affect = 0.25
+	return env
+
+
+func depart_to(planet_id: String, force: bool = false) -> void:
+	if planet_id != "desert" and planet_id != "ice":
+		return
+	if planet_id == "ice" and not GameState.ice_unlocked and not force:
+		return
+	if planet_id == GameState.planet:
+		if hud:
+			hud.close_port()
+		return
+	GameState.set_planet(planet_id)
+	Engine.time_scale = 1.0
+	get_tree().paused = false
+	get_tree().change_scene_to_file("res://scenes/world.tscn")
 
 
 func _place_spaceport() -> void:
@@ -884,6 +950,7 @@ func _grid_slots(def: Dictionary) -> Array[Vector3]:
 
 func _update_prompt() -> void:
 	near_race = -1
+	near_port = false
 	var best := 20.0
 	var flat := Vector2(player.global_position.x, player.global_position.z)
 	for i in beacon_positions.size():
@@ -892,6 +959,9 @@ func _update_prompt() -> void:
 		if d < best:
 			best = d
 			near_race = i
+	if near_race < 0 and flat.distance_to(Vector2(port_position.x, port_position.z)) < 22.0:
+		if absf(player.global_position.y - port_position.y) < 8.0:
+			near_port = true
 
 
 func _remember_safe(dt: float) -> void:
@@ -1040,8 +1110,48 @@ func _build_wind() -> void:
 	add_child(_wind_fx)
 
 
+func _build_snow() -> void:
+	_snow_fx = GPUParticles3D.new()
+	_snow_fx.name = "Snow"
+	_snow_fx.amount = 140
+	_snow_fx.lifetime = 5.5
+	_snow_fx.visibility_aabb = AABB(Vector3(-40, -30, -40), Vector3(80, 60, 80))
+	_snow_fx.local_coords = false
+	_snow_fx.emitting = true
+	var mat := ParticleProcessMaterial.new()
+	mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	mat.emission_box_extents = Vector3(26, 8, 26)
+	mat.direction = Vector3(terrain.wind_dir.x * 0.25, -1.0, terrain.wind_dir.z * 0.25)
+	mat.spread = 12.0
+	mat.initial_velocity_min = 1.4
+	mat.initial_velocity_max = 2.8
+	mat.gravity = Vector3(0.2, -0.35, 0.1)
+	mat.scale_min = 0.15
+	mat.scale_max = 0.4
+	mat.color = Color(0.95, 0.97, 1.0, 0.55)
+	_snow_fx.process_material = mat
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.12, 0.12)
+	var qmat := StandardMaterial3D.new()
+	qmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	qmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	qmat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	qmat.albedo_color = Color(0.96, 0.98, 1.0, 0.7)
+	quad.material = qmat
+	_snow_fx.draw_pass_1 = quad
+	add_child(_snow_fx)
+
+
 func _update_storm(dt: float) -> void:
 	if player == null or _env == null or _env.environment == null or _sky_mat == null:
+		return
+	if terrain.planet == "ice":
+		storm_level = 0.0
+		if wasteland:
+			wasteland.follow(player.global_position)
+		if _snow_fx and cam:
+			_snow_fx.emitting = true
+			_snow_fx.global_position = cam.global_position + Vector3(0.0, 8.0, 0.0)
 		return
 	storm_level = terrain.storm_factor(player.global_position.x, player.global_position.z)
 	if wasteland:

@@ -39,6 +39,9 @@ var _race_names: PackedStringArray = PackedStringArray()
 var _medal_summary: Label
 var _invite_note: Label
 var _guide_note: Label
+var _port_panel: Control
+var _port_open := false
+var _port_ice: Button
 var _map_open := false
 var map_texture: ImageTexture
 var speed_fx: ColorRect
@@ -58,6 +61,7 @@ func bind(host) -> void:
 	_build_pause(root)
 	_build_results(root)
 	_build_missions(root)
+	_build_port(root)
 
 
 func _process(_dt: float) -> void:
@@ -119,7 +123,7 @@ func show_results() -> void:
 	if GameState.just_invited:
 		lines.append("")
 		lines.append("A message arrives.")
-		lines.append("You are invited to the races on the next planet.")
+		lines.append("You are invited to the races on the next planet. Drive to the space port.")
 	lines.append("")
 	for i in world.race.order.size():
 		var car: HoverCar = world.race.order[i]
@@ -155,7 +159,7 @@ func _refresh() -> void:
 			hull_label.add_theme_color_override("font_color", Color(1.0, 0.45, 0.28))
 		else:
 			hull_label.visible = false
-	seed_label.text = "VERMILION WASTES   SEED %06d" % GameState.world_seed
+	seed_label.text = "%s   SEED %06d" % [GameState.planet_title(), GameState.world_seed]
 	var race = world.race
 	if race.active:
 		prompt_label.text = ""
@@ -198,6 +202,9 @@ func _refresh() -> void:
 			var def: Dictionary = world.roads.races[world.near_race]
 			prompt_label.text = "F  —  START  %s\n%s" % [str(def.name).to_upper(), def.blurb]
 			race_meta.visible = false
+		elif world.near_port:
+			prompt_label.text = "F  —  SPACE PORT"
+			race_meta.visible = false
 		else:
 			prompt_label.text = ""
 			race_meta.visible = true
@@ -215,6 +222,9 @@ func _refresh() -> void:
 
 
 func _on_escape() -> void:
+	if _port_open:
+		close_port()
+		return
 	if _garage != null:
 		_garage.queue_free()
 		_garage = null
@@ -701,7 +711,7 @@ func _build_missions(root: Control) -> void:
 	_invite_note.custom_minimum_size = Vector2(400, 0)
 	_invite_note.add_theme_font_size_override("font_size", 14)
 	_invite_note.add_theme_color_override("font_color", Color(1.0, 0.82, 0.38))
-	_invite_note.text = "A message arrives. You are invited to the races on the next planet."
+	_invite_note.text = "A message arrives. You are invited to the races on the next planet. Drive to the space port."
 	_invite_note.visible = false
 	side.add_child(_invite_note)
 	var scroll := ScrollContainer.new()
@@ -753,6 +763,53 @@ func _build_missions(root: Control) -> void:
 	var close := UiStyle.button("CLOSE", 200)
 	close.pressed.connect(func() -> void: _set_guide(false))
 	box.add_child(close)
+
+
+func _build_port(root: Control) -> void:
+	_port_panel = _overlay(root)
+	_port_panel.visible = false
+	var box := VBoxContainer.new()
+	box.set_anchors_preset(Control.PRESET_CENTER)
+	box.position = Vector2(-180, -150)
+	box.custom_minimum_size = Vector2(360, 280)
+	_port_panel.add_child(box)
+	var title := Label.new()
+	title.text = "SPACE PORT"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 28)
+	box.add_child(title)
+	var note := Label.new()
+	note.text = "Choose a planet."
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(note)
+	var desert := UiStyle.button("VERMILION WASTES", 360)
+	desert.pressed.connect(func() -> void: world.depart_to("desert"))
+	box.add_child(desert)
+	_port_ice = UiStyle.button("FROST REACH", 360)
+	_port_ice.pressed.connect(func() -> void: world.depart_to("ice"))
+	box.add_child(_port_ice)
+	var close := UiStyle.button("CLOSE", 360)
+	close.pressed.connect(close_port)
+	box.add_child(close)
+
+
+func open_port() -> void:
+	if _port_panel == null or _port_open:
+		return
+	_port_open = true
+	_port_panel.visible = true
+	if _port_ice:
+		_port_ice.disabled = not GameState.ice_unlocked
+		_port_ice.text = "FROST REACH" if GameState.ice_unlocked else "FROST REACH  —  4 GOLD MEDALS"
+	get_tree().paused = true
+
+
+func close_port() -> void:
+	_port_open = false
+	if _port_panel:
+		_port_panel.visible = false
+	if not _paused:
+		get_tree().paused = false
 
 
 func _overlay(root: Control) -> Control:

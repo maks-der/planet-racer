@@ -23,6 +23,7 @@ var _biome: FastNoiseLite
 var _mesas: Array[Dictionary] = []
 var _canyons: Array[Dictionary] = []
 var _base_heights := PackedFloat32Array()
+var planet := "desert"
 
 
 func generate(seed: int) -> void:
@@ -39,7 +40,10 @@ func begin(seed: int) -> void:
 	_waste = _noise(seed + 70, 0.0022, 3)
 	_waste_ridge = _noise(seed + 88, 0.0011, 3)
 	_biome = _noise(seed + 103, 0.0017, 2)
-	_build_features(seed)
+	if planet == "ice":
+		_build_ice_plateaus(seed)
+	else:
+		_build_features(seed)
 	var ang := float(seed % 628) * 0.01
 	wind_dir = Vector3(cos(ang), 0.0, sin(ang)).normalized()
 	heights.resize(RES * RES)
@@ -102,6 +106,8 @@ func region_weights(x: float, z: float) -> Vector4:
 
 
 func ground_color(x: float, z: float, h: float, normal: Vector3, road: float) -> Color:
+	if planet == "ice":
+		return _ice_color(x, z, h, normal, road)
 	var w := region_weights(x, z)
 	var grit := _detail.get_noise_2d(x * 1.6, z * 1.6) * 0.5 + 0.5
 	var slope := clampf(1.0 - normal.y, 0.0, 1.0)
@@ -127,6 +133,8 @@ func ground_color(x: float, z: float, h: float, normal: Vector3, road: float) ->
 
 
 func waste_height(x: float, z: float) -> float:
+	if planet == "ice":
+		return 6.0 + _sastrugi(x, z) * 0.65
 	var w := region_weights(x, z)
 	var n := _waste.get_noise_2d(x, z)
 	var ridge := pow(1.0 - absf(_waste_ridge.get_noise_2d(x, z)), 1.8)
@@ -138,6 +146,8 @@ func waste_height(x: float, z: float) -> float:
 
 
 func storm_factor(x: float, z: float) -> float:
+	if planet == "ice":
+		return 0.0
 	var dist := Vector2(x, z).length()
 	return Util.smoothstep(HALF * 0.96, HALF * 1.28, dist)
 
@@ -276,6 +286,87 @@ func blend_border() -> void:
 			road_mask[idx] *= 1.0 - t
 
 
+func _build_ice_plateaus(seed: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed + 90
+	_mesas.clear()
+	_canyons.clear()
+	var reach := HALF * 0.7
+	for i in 4:
+		_mesas.append({
+			"pos": Vector2(rng.randf_range(-reach, reach), rng.randf_range(-reach, reach)),
+			"radius": rng.randf_range(200.0, 340.0),
+			"height": rng.randf_range(64.0, 128.0),
+			"flat": true,
+			"aspect": rng.randf_range(2.2, 3.6),
+			"yaw": rng.randf_range(-PI, PI),
+			"cliff": rng.randf_range(8.0, 14.0),
+		})
+	for i in 5:
+		_mesas.append({
+			"pos": Vector2(rng.randf_range(-reach, reach), rng.randf_range(-reach, reach)),
+			"radius": rng.randf_range(90.0, 180.0),
+			"height": rng.randf_range(28.0, 72.0),
+			"flat": true,
+			"aspect": rng.randf_range(1.15, 2.1),
+			"yaw": rng.randf_range(-PI, PI),
+			"cliff": rng.randf_range(8.0, 14.0),
+		})
+	for i in 16:
+		_mesas.append({
+			"pos": Vector2(rng.randf_range(-reach, reach), rng.randf_range(-reach, reach)),
+			"radius": rng.randf_range(16.0, 48.0),
+			"height": rng.randf_range(9.0, 30.0),
+			"flat": true,
+			"aspect": rng.randf_range(1.0, 1.7),
+			"yaw": rng.randf_range(-PI, PI),
+			"cliff": rng.randf_range(6.0, 10.0),
+		})
+
+
+func _ice_across(x: float, z: float) -> float:
+	return x * -wind_dir.z + z * wind_dir.x
+
+
+func _ice_along(x: float, z: float) -> float:
+	return x * wind_dir.x + z * wind_dir.z
+
+
+func _sastrugi(x: float, z: float) -> float:
+	var across := _ice_across(x, z)
+	var along := _ice_along(x, z)
+	var crest := sin(across * 0.078) * 0.62 + sin(across * 0.21 + along * 0.012) * 0.38
+	var shaped := pow(clampf(crest * 0.5 + 0.5, 0.0, 1.0), 1.85)
+	var broad := _dune.get_noise_2d(x * 0.035, z * 0.035)
+	return broad * 0.9 + shaped * 2.15 + sin(across * 0.46) * 0.28
+
+
+func _ice_color(x: float, z: float, h: float, normal: Vector3, road: float) -> Color:
+	var across := _ice_across(x, z)
+	var along := _ice_along(x, z)
+	var crest := sin(across * 0.078) * 0.62 + sin(across * 0.21 + along * 0.012) * 0.38
+	var trough := clampf(0.5 - crest * 0.5, 0.0, 1.0)
+	var snow := Color(0.97, 0.98, 1.0)
+	var shade := Color(0.55, 0.7, 0.86)
+	var col := snow.lerp(shade, trough * 0.48)
+	var slope := clampf(1.0 - normal.y, 0.0, 1.0)
+	if slope > 0.1:
+		var face := clampf((slope - 0.1) / 0.42, 0.0, 1.0)
+		var strata := sin(h * 0.38 + along * 0.008) * 0.5 + 0.5
+		var deep := Color(0.16, 0.46, 0.66)
+		var turquoise := Color(0.58, 0.9, 0.96)
+		var ice := deep.lerp(turquoise, strata)
+		var band := smoothstep(0.78, 0.94, fposmod(h * 0.065, 1.0))
+		ice = ice.lerp(Color(0.94, 0.97, 1.0), band * 0.9)
+		col = col.lerp(ice, face)
+	if h > 18.0 and slope < 0.2:
+		col = col.lerp(Color(1.0, 1.0, 1.0), clampf((h - 18.0) / 40.0, 0.0, 0.45))
+	if road > 0.05:
+		var packed := Color(0.74, 0.86, 0.94)
+		col = col.lerp(packed, clampf(road, 0.0, 1.0) * 0.72)
+	return col
+
+
 func _build_features(seed: int) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed + 90
@@ -327,6 +418,8 @@ func _build_features(seed: int) -> void:
 
 
 func _base_height(x: float, z: float) -> float:
+	if planet == "ice":
+		return 6.0 + _sastrugi(x, z)
 	var w := region_weights(x, z)
 	var dune := _dune.get_noise_2d(x, z)
 	var detail := _detail.get_noise_2d(x, z)
@@ -417,6 +510,8 @@ func cut_road_canyons(edges: Array) -> void:
 
 
 func _highland_lift(x: float, z: float) -> float:
+	if planet == "ice":
+		return _plateau_lift(x, z)
 	var fade := _border_fade(x, z)
 	if fade <= 0.001:
 		return 0.0
@@ -439,6 +534,28 @@ func _highland_lift(x: float, z: float) -> float:
 	var range_mask := Util.smoothstep(-0.05, 0.62, _range.get_noise_2d(x, z))
 	var range_amp := lerpf(78.0, 130.0, clampf(w.y + w.z * 0.8, 0.0, 1.0))
 	lift += ridged * range_mask * range_amp * (1.0 - salt * 0.15)
+	return lift * fade
+
+
+func _plateau_lift(x: float, z: float) -> float:
+	var fade := _border_fade(x, z)
+	if fade <= 0.001:
+		return 0.0
+	var lift := 0.0
+	for mesa in _mesas:
+		var pos := Vector2(mesa.pos)
+		var rel := Vector2(x, z) - pos
+		var yaw := float(mesa.get("yaw", 0.0))
+		var aspect := maxf(float(mesa.get("aspect", 1.0)), 1.0)
+		rel = rel.rotated(-yaw)
+		rel.x /= aspect
+		var d := rel.length()
+		var radius: float = mesa.radius
+		if d >= radius:
+			continue
+		var cliff := float(mesa.get("cliff", 12.0))
+		var shape := Util.smoothstep(radius, maxf(radius - cliff, 1.0), d)
+		lift = maxf(lift, float(mesa.height) * shape)
 	return lift * fade
 
 

@@ -84,6 +84,9 @@ func _ensure(ix: int, iz: int) -> void:
 	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/terrain.gdshader")
+	if terrain.planet == "ice":
+		mat.set_shader_parameter("frozen", 1.0)
+		mat.set_shader_parameter("wind_dir", Vector2(terrain.wind_dir.x, terrain.wind_dir.z))
 	inst.material_override = mat
 	add_child(inst)
 	_chunks[key] = inst
@@ -100,7 +103,8 @@ func _mesh(origin_x: float, origin_z: float) -> ArrayMesh:
 			var h := terrain.waste_height(wx, wz)
 			var normal := terrain.normal_at(wx, wz)
 			var ash := terrain.ground_color(wx, wz, h, normal, 0.0)
-			ash = ash.lerp(Color(0.34, 0.28, 0.22), clampf((h - 8.0) / 30.0, 0.0, 0.35))
+			if terrain.planet != "ice":
+				ash = ash.lerp(Color(0.34, 0.28, 0.22), clampf((h - 8.0) / 30.0, 0.0, 0.35))
 			st.set_normal(normal)
 			st.set_color(Color(ash.r, ash.g, ash.b, 1.0 - normal.y))
 			st.set_uv(Vector2(wx, wz) * 0.02)

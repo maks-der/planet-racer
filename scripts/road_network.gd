@@ -979,7 +979,7 @@ func _finalize_race(data: Dictionary, race_name: String, kind: String) -> Dictio
 	if bool(data.has_shortcut):
 		features.append("shortcuts")
 	if features.is_empty():
-		features.append("open desert")
+		features.append("open ice" if terrain.planet == "ice" else "open desert")
 	var blurb := "%s · %s · %s" % [
 		"Circuit" if circuit else "Point to point",
 		Util.km(length * float(laps)),

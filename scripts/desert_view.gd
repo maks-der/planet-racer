@@ -20,6 +20,10 @@ static func build(parent: Node3D, terrain: TerrainField, roads: RoadNetwork, hos
 		host.arrival.set_progress(0.74, "THREADING ROADS")
 		await host.get_tree().process_frame
 	await _add_roads(parent, roads, terrain, host)
+	if terrain.planet == "ice":
+		if host != null:
+			host.arrival.set_progress(0.9, "OPENING THE ICE")
+		return
 	if host != null:
 		host.arrival.set_progress(0.88, "SETTLING ROCK")
 		await host.get_tree().process_frame
@@ -35,6 +39,9 @@ static func _add_terrain(parent: Node3D, terrain: TerrainField, host: Node = nul
 	parent.add_child(root)
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/terrain.gdshader")
+	if terrain.planet == "ice":
+		mat.set_shader_parameter("frozen", 1.0)
+		mat.set_shader_parameter("wind_dir", Vector2(terrain.wind_dir.x, terrain.wind_dir.z))
 	var quads := TerrainField.RES - 1
 	const CHUNK := 80
 	var chunks := int(ceil(float(quads) / float(CHUNK)))
@@ -99,12 +106,12 @@ static func _add_roads(parent: Node3D, roads: RoadNetwork, _terrain: TerrainFiel
 	var root := Node3D.new()
 	root.name = "Roadside"
 	parent.add_child(root)
-	await _add_dirt_roads(root, roads, host)
+	await _add_dirt_roads(root, roads, _terrain, host)
 	await _place_arches(root, roads, host)
 	await _place_posts(root, roads, host)
 
 
-static func _add_dirt_roads(root: Node3D, roads: RoadNetwork, host: Node = null) -> void:
+static func _add_dirt_roads(root: Node3D, roads: RoadNetwork, terrain: TerrainField, host: Node = null) -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var steps := 0
@@ -144,6 +151,7 @@ static func _add_dirt_roads(root: Node3D, roads: RoadNetwork, host: Node = null)
 		return
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/road.gdshader")
+	mat.set_shader_parameter("frozen", 1.0 if terrain.planet == "ice" else 0.0)
 	var inst := MeshInstance3D.new()
 	inst.name = "DirtRoads"
 	inst.mesh = mesh
