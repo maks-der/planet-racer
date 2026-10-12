@@ -40,13 +40,13 @@ func _draw_map() -> void:
 			if prev != Vector2.INF and _on_map(prev) and _on_map(mp):
 				draw_line(prev, mp, col, 1.6, true)
 			prev = mp
+	_draw_rewarded_tracks(world, false, player, center, ppm, Vector2.ZERO, 0.0, 0.0)
 	for i in world.beacon_positions.size():
 		var bp: Vector3 = world.beacon_positions[i]
 		var mp2 := _map_point(bp, player, center, ppm)
 		if not _on_map(mp2):
 			continue
-		var c: Color = world.BOT_COLORS[i % world.BOT_COLORS.size()]
-		draw_rect(Rect2(mp2 - Vector2(3, 3), Vector2(6, 6)), c)
+		draw_rect(Rect2(mp2 - Vector2(3, 3), Vector2(6, 6)), Color(0.25, 0.95, 0.42))
 	for bot in world.bots:
 		if not is_instance_valid(bot):
 			continue
@@ -88,9 +88,10 @@ func _draw_world() -> void:
 			if prev != Vector2.INF:
 				draw_line(prev, mp, col, 2.0, true)
 			prev = mp
+	_draw_rewarded_tracks(world, true, Vector3.ZERO, Vector2.ZERO, 0.0, origin, scale, half)
 	for i in world.beacon_positions.size():
 		var bp: Vector3 = world.beacon_positions[i]
-		draw_circle(_world_point(bp, origin, scale, half), 4.0, world.BOT_COLORS[i % world.BOT_COLORS.size()])
+		draw_circle(_world_point(bp, origin, scale, half), 4.0, Color(0.25, 0.95, 0.42))
 	for station in world.fix_stations:
 		draw_circle(_world_point(station, origin, scale, half), 3.4, Color(0.3, 0.95, 0.48))
 	var port := _world_point(world.port_position, origin, scale, half)
@@ -152,19 +153,22 @@ func _draw_course(def: Dictionary, show_racers: bool) -> void:
 	var origin := (size - Vector2(span_x, span_z) * scale) * 0.5
 	var step := 1 if pts.size() < 500 else 2
 	var width := clampf(size.x / 70.0, 2.4, 5.0)
+	var rank := _track_rank(def)
+	var ink := _reward_color(rank)
+	var edge := _reward_outline(rank)
 	var prev := Vector2.INF
 	for i in range(0, pts.size(), step):
 		var mp := origin + Vector2((pts[i].x - min_x) * scale, (max_z - pts[i].z) * scale)
 		if prev != Vector2.INF:
-			draw_line(prev, mp, Color(0.05, 0.16, 0.28, 0.95), width + 3.0, true)
-			draw_line(prev, mp, Color(0.28, 0.78, 1.0, 0.95), width, true)
+			draw_line(prev, mp, edge, width + 3.0, true)
+			draw_line(prev, mp, ink, width, true)
 		prev = mp
 	var last := origin + Vector2((pts[pts.size() - 1].x - min_x) * scale, (max_z - pts[pts.size() - 1].z) * scale)
 	if prev != Vector2.INF and prev.distance_to(last) > 1.0:
-		draw_line(prev, last, Color(0.28, 0.78, 1.0, 0.95), width, true)
+		draw_line(prev, last, ink, width, true)
 	var start := origin + Vector2((pts[0].x - min_x) * scale, (max_z - pts[0].z) * scale)
 	if str(def.type) == "circuit":
-		draw_line(last, start, Color(0.28, 0.78, 1.0, 0.95), width, true)
+		draw_line(last, start, ink, width, true)
 	var cps: PackedVector3Array = def.checkpoints
 	var next_i := -1
 	if show_racers:
@@ -201,6 +205,55 @@ func _draw_course(def: Dictionary, show_racers: bool) -> void:
 	var a := pc - Vector2(fwd.x, -fwd.z) * 5.0 + Vector2(right.x, -right.z) * 5.0
 	var b := pc - Vector2(fwd.x, -fwd.z) * 5.0 - Vector2(right.x, -right.z) * 5.0
 	draw_colored_polygon(PackedVector2Array([tip, a, b]), Color(1, 1, 1))
+
+
+func _draw_rewarded_tracks(world, world_map: bool, player: Vector3, center: Vector2, ppm: float, origin: Vector2, scale: float, half: float) -> void:
+	var races: Array[Dictionary] = world.roads.races
+	for race_i in races.size():
+		var def: Dictionary = races[race_i]
+		var rank := _track_rank(def)
+		if rank <= 0:
+			continue
+		var pts: PackedVector3Array = def.points
+		if pts.size() < 2:
+			continue
+		var col := _reward_color(rank)
+		var width := 3.4 if world_map else 2.8
+		var prev := Vector2.INF
+		for i in range(0, pts.size(), 2):
+			var mp := _world_point(pts[i], origin, scale, half) if world_map else _map_point(pts[i], player, center, ppm)
+			if prev != Vector2.INF and (world_map or (_on_map(prev) and _on_map(mp))):
+				draw_line(prev, mp, col, width, true)
+			prev = mp
+		var end_i := pts.size() - 1
+		if end_i % 2 != 0:
+			var last := _world_point(pts[end_i], origin, scale, half) if world_map else _map_point(pts[end_i], player, center, ppm)
+			if prev != Vector2.INF and (world_map or (_on_map(prev) and _on_map(last))):
+				draw_line(prev, last, col, width, true)
+
+
+func _track_rank(def: Dictionary) -> int:
+	return GameState.medal_rank(GameState.world_seed, str(def.name))
+
+
+func _reward_color(rank: int) -> Color:
+	if rank >= 3:
+		return Color(1.0, 0.8, 0.28, 0.98)
+	if rank == 2:
+		return Color(0.88, 0.91, 0.96, 0.98)
+	if rank == 1:
+		return Color(0.84, 0.5, 0.24, 0.98)
+	return Color(0.28, 0.78, 1.0, 0.95)
+
+
+func _reward_outline(rank: int) -> Color:
+	if rank >= 3:
+		return Color(0.42, 0.26, 0.05, 0.95)
+	if rank == 2:
+		return Color(0.28, 0.3, 0.34, 0.95)
+	if rank == 1:
+		return Color(0.34, 0.16, 0.06, 0.95)
+	return Color(0.05, 0.16, 0.28, 0.95)
 
 
 func _world_point(p: Vector3, origin: Vector2, scale: float, half: float) -> Vector2:

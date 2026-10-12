@@ -518,7 +518,7 @@ func _spawn_beacons() -> void:
 		holder.position = pos
 		root.add_child(holder)
 		beacon_roots.append(holder)
-		var tint: Color = BOT_COLORS[i % BOT_COLORS.size()]
+		var tint := Color(0.25, 0.95, 0.42)
 		var ring := holder.get_node("Ring") as MeshInstance3D
 		var ring_mat := StandardMaterial3D.new()
 		ring_mat.albedo_color = tint

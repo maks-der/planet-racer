@@ -91,11 +91,14 @@ var preset_index: int = 0
 var primary := Color("14e6ff")
 var accent := Color("ff8a1e")
 var best_times: Dictionary = {}
+var medals: Dictionary = {}
+var just_invited := false
 
 
 func _ready() -> void:
 	_ensure_inputs()
 	_load_car()
+	_load_medals()
 
 
 func _ensure_inputs() -> void:
@@ -187,6 +190,71 @@ func best_time(seed: int, race_name: String) -> float:
 	if best_times.has(key):
 		return float(best_times[key])
 	return -1.0
+
+
+func medal_rank(seed: int, race_name: String) -> int:
+	return int(medals.get(_medal_key(seed, race_name), 0))
+
+
+func medal_name(rank: int) -> String:
+	if rank >= 3:
+		return "GOLD"
+	if rank == 2:
+		return "SILVER"
+	if rank == 1:
+		return "BRONZE"
+	return ""
+
+
+func gold_count(seed: int) -> int:
+	var prefix := "%d|" % seed
+	var count := 0
+	for key in medals.keys():
+		if str(key).begins_with(prefix) and int(medals[key]) >= 3:
+			count += 1
+	return count
+
+
+func award_medal(seed: int, race_name: String, place: int) -> void:
+	just_invited = false
+	var rank := 0
+	if place == 1:
+		rank = 3
+	elif place == 2:
+		rank = 2
+	elif place == 3:
+		rank = 1
+	if rank == 0:
+		return
+	var key := _medal_key(seed, race_name)
+	if rank <= int(medals.get(key, 0)):
+		return
+	var before := gold_count(seed)
+	medals[key] = rank
+	_save_medals()
+	just_invited = before < 4 and gold_count(seed) >= 4
+
+
+func _medal_key(seed: int, race_name: String) -> String:
+	return "%d|%s" % [seed, race_name]
+
+
+func _save_medals() -> void:
+	var cf := ConfigFile.new()
+	for key in medals.keys():
+		cf.set_value("medals", str(key), int(medals[key]))
+	cf.save("user://medals.cfg")
+
+
+func _load_medals() -> void:
+	medals.clear()
+	var cf := ConfigFile.new()
+	if cf.load("user://medals.cfg") != OK:
+		return
+	if not cf.has_section("medals"):
+		return
+	for key in cf.get_section_keys("medals"):
+		medals[key] = int(cf.get_value("medals", key, 0))
 
 
 func save_car() -> void:

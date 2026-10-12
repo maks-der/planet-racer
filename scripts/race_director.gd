@@ -73,6 +73,7 @@ func tick(dt: float) -> void:
 	if player.finished and not finished:
 		finished = true
 		just_finished = true
+		GameState.award_medal(GameState.world_seed, str(race.name), player_place())
 		Sfx.beep(world, 640.0, 0.16, -8.0)
 		Sfx.beep(world, 880.0, 0.22, -8.0)
 		for car in racers:

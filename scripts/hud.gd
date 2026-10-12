@@ -3,7 +3,6 @@ extends CanvasLayer
 
 var world
 var speed_label: Label
-var boost_bar: ProgressBar
 var race_panel: PanelContainer
 var race_label: Label
 var race_meta: Label
@@ -31,10 +30,14 @@ var view_label: Label
 var view_time := 0.0
 var storm_label: Label
 var hull_label: Label
-var hp_bar: ProgressBar
-var _hp_fill: StyleBoxFlat
+var _boost_fill: ColorRect
+var _boost_lock: ColorRect
+var _boost_mark: ColorRect
 var map_panel: Control
-var _mission_starts: Array[Button] = []
+var _medal_labels: Array[Label] = []
+var _race_names: PackedStringArray = PackedStringArray()
+var _medal_summary: Label
+var _invite_note: Label
 var _guide_note: Label
 var _map_open := false
 var map_texture: ImageTexture
@@ -110,6 +113,13 @@ func show_results() -> void:
 	var best := GameState.best_time(GameState.world_seed, str(world.race.race.name))
 	if best > 0.0:
 		lines.append("SECTOR BEST  " + Util.format_time(best))
+	var medal := GameState.medal_rank(GameState.world_seed, str(world.race.race.name))
+	if medal > 0:
+		lines.append("%s MEDAL" % GameState.medal_name(medal))
+	if GameState.just_invited:
+		lines.append("")
+		lines.append("A message arrives.")
+		lines.append("You are invited to the races on the next planet.")
 	lines.append("")
 	for i in world.race.order.size():
 		var car: HoverCar = world.race.order[i]
@@ -125,11 +135,15 @@ func _refresh() -> void:
 	if _speed_mat:
 		var rush := Util.smoothstep(40.0, HoverCar.SPEED_LIMIT * 0.75, car.speed_mps())
 		_speed_mat.set_shader_parameter("intensity", rush)
-	boost_bar.value = car.boost
-	if hp_bar:
-		hp_bar.value = car.hp
-		if _hp_fill:
-			_hp_fill.bg_color = Color(0.95, 0.28, 0.18) if car.hp < 30.0 else Color(0.28, 0.92, 0.48)
+	if _boost_fill:
+		var cap := clampf(car.hp / HoverCar.HP_MAX, 0.0, 1.0)
+		var amount := clampf(car.boost / 100.0, 0.0, cap)
+		_boost_fill.size = Vector2(180.0 * amount, 16.0)
+		_boost_lock.position = Vector2(180.0 * cap, 0.0)
+		_boost_lock.size = Vector2(180.0 * (1.0 - cap), 16.0)
+		_boost_mark.position = Vector2(maxf(180.0 * cap - 1.0, 0.0), 0.0)
+		_boost_mark.visible = cap < 0.995
+		_boost_fill.color = Color(0.95, 0.28, 0.18) if cap < 0.3 else Color(1.0, 0.55, 0.16)
 	if hull_label:
 		if car.fix_flash > 0.0:
 			hull_label.visible = true
@@ -239,7 +253,7 @@ func _build_drive_ui(root: Control) -> void:
 	speed_box.position = Vector2(28, 0)
 	speed_box.anchor_top = 1.0
 	speed_box.anchor_bottom = 1.0
-	speed_box.offset_top = -198
+	speed_box.offset_top = -164
 	speed_box.offset_bottom = -28
 	speed_box.offset_left = 28
 	speed_box.offset_right = 250
@@ -257,44 +271,33 @@ func _build_drive_ui(root: Control) -> void:
 	unit.text = "KM/H"
 	unit.add_theme_color_override("font_color", Color(0.55, 0.75, 0.85))
 	vb.add_child(unit)
-	boost_bar = ProgressBar.new()
-	boost_bar.max_value = 100
-	boost_bar.value = 100
-	boost_bar.show_percentage = false
-	boost_bar.custom_minimum_size = Vector2(180, 16)
-	var boost_bg := StyleBoxFlat.new()
-	boost_bg.bg_color = Color(0.08, 0.09, 0.11)
-	boost_bg.set_corner_radius_all(2)
-	var boost_fill := StyleBoxFlat.new()
-	boost_fill.bg_color = Color(1.0, 0.55, 0.16)
-	boost_fill.set_corner_radius_all(2)
-	boost_bar.add_theme_stylebox_override("background", boost_bg)
-	boost_bar.add_theme_stylebox_override("fill", boost_fill)
-	vb.add_child(boost_bar)
+	var meter := Control.new()
+	meter.custom_minimum_size = Vector2(180, 16)
+	vb.add_child(meter)
+	var track := ColorRect.new()
+	track.color = Color(0.08, 0.09, 0.11)
+	track.size = Vector2(180, 16)
+	track.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	meter.add_child(track)
+	_boost_fill = ColorRect.new()
+	_boost_fill.color = Color(1.0, 0.55, 0.16)
+	_boost_fill.size = Vector2(180, 16)
+	_boost_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	meter.add_child(_boost_fill)
+	_boost_lock = ColorRect.new()
+	_boost_lock.color = Color(0.28, 0.08, 0.06, 0.95)
+	_boost_lock.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	meter.add_child(_boost_lock)
+	_boost_mark = ColorRect.new()
+	_boost_mark.color = Color(0.45, 0.95, 0.62)
+	_boost_mark.size = Vector2(2, 16)
+	_boost_mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	meter.add_child(_boost_mark)
 	var boost_name := Label.new()
 	boost_name.text = "BOOST"
 	boost_name.add_theme_font_size_override("font_size", 12)
 	boost_name.add_theme_color_override("font_color", Color(1.0, 0.62, 0.22))
 	vb.add_child(boost_name)
-	hp_bar = ProgressBar.new()
-	hp_bar.max_value = HoverCar.HP_MAX
-	hp_bar.value = HoverCar.HP_MAX
-	hp_bar.show_percentage = false
-	hp_bar.custom_minimum_size = Vector2(180, 16)
-	var hp_bg := StyleBoxFlat.new()
-	hp_bg.bg_color = Color(0.08, 0.09, 0.11)
-	hp_bg.set_corner_radius_all(2)
-	_hp_fill = StyleBoxFlat.new()
-	_hp_fill.bg_color = Color(0.28, 0.92, 0.48)
-	_hp_fill.set_corner_radius_all(2)
-	hp_bar.add_theme_stylebox_override("background", hp_bg)
-	hp_bar.add_theme_stylebox_override("fill", _hp_fill)
-	vb.add_child(hp_bar)
-	var hp_name := Label.new()
-	hp_name.text = "HULL"
-	hp_name.add_theme_font_size_override("font_size", 12)
-	hp_name.add_theme_color_override("font_color", Color(0.45, 0.95, 0.62))
-	vb.add_child(hp_name)
 
 	hull_label = Label.new()
 	hull_label.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
@@ -575,10 +578,45 @@ func _set_guide(open: bool) -> void:
 	if map_panel:
 		map_panel.queue_redraw()
 	var busy: bool = world != null and bool(world.race.active)
-	for btn in _mission_starts:
-		btn.disabled = busy
+	_refresh_medals()
 	if _guide_note:
-		_guide_note.text = "A race is already running." if busy else "Routes share the desert road network. Start here, or drive into a beacon."
+		_guide_note.text = "A race is already running." if busy else "Drive to a start beacon to begin that race."
+
+
+func _refresh_medals() -> void:
+	if world == null or _medal_summary == null:
+		return
+	var seed := GameState.world_seed
+	var gold := 0
+	var silver := 0
+	var bronze := 0
+	for i in _medal_labels.size():
+		var rank := GameState.medal_rank(seed, _race_names[i])
+		_paint_medal(_medal_labels[i], rank)
+		if rank >= 3:
+			gold += 1
+		elif rank == 2:
+			silver += 1
+		elif rank == 1:
+			bronze += 1
+	_medal_summary.text = "%d GOLD    %d SILVER    %d BRONZE" % [gold, silver, bronze]
+	if _invite_note:
+		_invite_note.visible = gold >= 4
+
+
+func _paint_medal(label: Label, rank: int) -> void:
+	if rank >= 3:
+		label.text = "GOLD"
+		label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.28))
+	elif rank == 2:
+		label.text = "SILVER"
+		label.add_theme_color_override("font_color", Color(0.86, 0.9, 0.95))
+	elif rank == 1:
+		label.text = "BRONZE"
+		label.add_theme_color_override("font_color", Color(0.82, 0.5, 0.26))
+	else:
+		label.text = "—"
+		label.add_theme_color_override("font_color", Color(0.45, 0.52, 0.58))
 
 
 func _bake_map() -> void:
@@ -602,8 +640,8 @@ func _build_results(root: Control) -> void:
 	results_panel.visible = false
 	var box := VBoxContainer.new()
 	box.set_anchors_preset(Control.PRESET_CENTER)
-	box.position = Vector2(-220, -180)
-	box.custom_minimum_size = Vector2(440, 360)
+	box.position = Vector2(-220, -210)
+	box.custom_minimum_size = Vector2(440, 420)
 	results_panel.add_child(box)
 	results_body = Label.new()
 	results_body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -636,7 +674,7 @@ func _build_missions(root: Control) -> void:
 	title.add_theme_font_size_override("font_size", 28)
 	box.add_child(title)
 	_guide_note = Label.new()
-	_guide_note.text = "Routes share the desert road network. Start here, or drive into a beacon."
+	_guide_note.text = "Drive to a start beacon to begin that race."
 	_guide_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_guide_note)
 	var columns := HBoxContainer.new()
@@ -644,20 +682,42 @@ func _build_missions(root: Control) -> void:
 	box.add_child(columns)
 	map_panel = Control.new()
 	map_panel.name = "WorldMap"
-	map_panel.custom_minimum_size = Vector2(760, 640)
+	map_panel.custom_minimum_size = Vector2(700, 620)
 	map_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	map_panel.set_script(load("res://scripts/race_overlay.gd"))
 	map_panel.host = self
 	columns.add_child(map_panel)
+	var side := VBoxContainer.new()
+	side.custom_minimum_size = Vector2(420, 620)
+	side.add_theme_constant_override("separation", 6)
+	columns.add_child(side)
+	_medal_summary = Label.new()
+	_medal_summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_medal_summary.add_theme_font_size_override("font_size", 14)
+	side.add_child(_medal_summary)
+	_invite_note = Label.new()
+	_invite_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_invite_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_invite_note.custom_minimum_size = Vector2(400, 0)
+	_invite_note.add_theme_font_size_override("font_size", 14)
+	_invite_note.add_theme_color_override("font_color", Color(1.0, 0.82, 0.38))
+	_invite_note.text = "A message arrives. You are invited to the races on the next planet."
+	_invite_note.visible = false
+	side.add_child(_invite_note)
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(520, 640)
-	columns.add_child(scroll)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	side.add_child(scroll)
 	var list := VBoxContainer.new()
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(list)
+	_medal_labels.clear()
+	_race_names = PackedStringArray()
 	for i in world.roads.races.size():
 		var def: Dictionary = world.roads.races[i]
 		var row := HBoxContainer.new()
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		list.add_child(row)
 		var info := Label.new()
 		var kind := "CIRCUIT"
@@ -668,20 +728,28 @@ func _build_missions(root: Control) -> void:
 			"" if int(def.laps) == 1 else "s",
 			def.blurb,
 		]
-		info.custom_minimum_size = Vector2(280, 52)
+		info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		info.custom_minimum_size = Vector2(180, 44)
 		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(info)
-		var go := UiStyle.button("START", 110)
+		var medal := Label.new()
+		medal.custom_minimum_size = Vector2(72, 44)
+		medal.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		medal.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		medal.add_theme_font_size_override("font_size", 13)
+		row.add_child(medal)
+		_medal_labels.append(medal)
+		_race_names.append(str(def.name))
+		var mark := UiStyle.button("PIN", 72)
+		mark.custom_minimum_size = Vector2(72, 36)
+		mark.add_theme_font_size_override("font_size", 14)
 		var index: int = i
-		go.pressed.connect(func() -> void: world.start_race(index))
-		_mission_starts.append(go)
-		row.add_child(go)
-		var mark := UiStyle.button("PIN", 80)
 		mark.pressed.connect(func() -> void:
 			world.waypoint = index
 			_set_guide(false)
 		)
 		row.add_child(mark)
+	_refresh_medals()
 	var close := UiStyle.button("CLOSE", 200)
 	close.pressed.connect(func() -> void: _set_guide(false))
 	box.add_child(close)

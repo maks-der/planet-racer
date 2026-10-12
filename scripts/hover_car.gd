@@ -98,6 +98,10 @@ func _crippled() -> bool:
 	return hp <= 0.0 and not ai
 
 
+func _boost_limit() -> float:
+	return clampf(hp, 0.0, 100.0)
+
+
 func _apply_damage() -> void:
 	if _hit_decel <= 0.0:
 		return
@@ -105,6 +109,7 @@ func _apply_damage() -> void:
 	_hit_decel = 0.0
 	_hit_speed = 0.0
 	hp = maxf(0.0, hp - amount)
+	boost = minf(boost, _boost_limit())
 
 
 func _physics_process(dt: float) -> void:
@@ -151,6 +156,7 @@ func _physics_process(dt: float) -> void:
 			left_pad = true
 		else:
 			_drive(dt, input, surface, height, hover, normal)
+	boost = clampf(boost, 0.0, _boost_limit())
 
 	var steps := clampi(int(ceil(Vector2(velocity.x, velocity.z).length() * dt / 1.6)), 1, 6)
 	var left := float(steps)
@@ -631,6 +637,8 @@ func _update_bolts() -> void:
 	_draw_discharge(_arc_from, _arc_to, rng, 0.42)
 	if _arc2_live:
 		_draw_discharge(_arc2_from, _arc2_to, rng, 0.28)
+	_draw_side_discharge(-1.0, rng, 0.2)
+	_draw_side_discharge(1.0, rng, 0.2)
 	_bolt_light.position = _arc_from
 	_bolt_light.light_energy = rng.randf_range(1.6, 4.4)
 
@@ -647,6 +655,47 @@ func _draw_discharge(local_from: Vector3, local_foot: Vector3, rng: RandomNumber
 		_bolt_branch(pts, rng)
 	if rng.randf() < 0.35 and pts.size() > 5:
 		_bolt_branch(pts, rng)
+
+
+func _draw_side_discharge(side_sign: float, rng: RandomNumberGenerator, amp: float) -> void:
+	var along := rng.randf_range(-1.15, 0.85)
+	var local_from := Vector3(side_sign * rng.randf_range(0.92, 1.08), rng.randf_range(0.22, 0.58), along)
+	var from_g := global_position + global_transform.basis * local_from
+	var outward := global_transform.basis.x * side_sign
+	var ahead := -global_transform.basis.z
+	var foot_g := from_g + outward * rng.randf_range(1.15, 2.5) + ahead * rng.randf_range(-0.4, 0.65)
+	var surface: Dictionary = world.sample_surface(foot_g)
+	foot_g.y = float(surface.height) + 0.05
+	var knee_g := Vector3(from_g.x, lerpf(from_g.y, foot_g.y, 0.78), from_g.z)
+	var pts := _bolt_curve(to_local(from_g), to_local(knee_g), to_local(foot_g), rng, amp)
+	_bolt_strip(pts, 0.042, Color(0.35, 0.72, 1.0, 0.3))
+	_bolt_strip(pts, 0.01, Color(0.96, 0.98, 1.0, 0.94))
+	if rng.randf() < 0.55 and pts.size() > 4:
+		_bolt_branch(pts, rng)
+
+
+func _bolt_curve(a: Vector3, knee: Vector3, b: Vector3, rng: RandomNumberGenerator, amp: float) -> PackedVector3Array:
+	var count := 10
+	var pts := PackedVector3Array()
+	pts.resize(count + 1)
+	var axis := (b - a).cross(Vector3.UP)
+	if axis.length_squared() < 0.0001:
+		axis = Vector3.RIGHT
+	axis = axis.normalized()
+	var bend := axis.cross(Vector3.DOWN)
+	if bend.length_squared() < 0.0001:
+		bend = Vector3.FORWARD
+	bend = bend.normalized()
+	for i in count + 1:
+		var t := float(i) / float(count)
+		var u := 1.0 - t
+		var p := a * u * u + knee * (2.0 * u * t) + b * t * t
+		if i > 0 and i < count:
+			var wobble := sin(PI * t) * smoothstep(0.18, 0.62, t)
+			p += axis * rng.randf_range(-amp, amp) * wobble
+			p += bend * rng.randf_range(-amp * 0.35, amp * 0.35) * wobble
+		pts[i] = p
+	return pts
 
 
 func _bolt_points(a: Vector3, b: Vector3, rng: RandomNumberGenerator, amp: float) -> PackedVector3Array:
