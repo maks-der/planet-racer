@@ -1,9 +1,8 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/ice_arrival.gd" id="1_arrival"]
 [ext_resource type="PackedScene" path="res://scenes/loading/starfield.tscn" id="2_stars"]
 [ext_resource type="PackedScene" path="res://scenes/loading/ice_planet.tscn" id="3_planet"]
-[ext_resource type="PackedScene" path="res://scenes/loading/starship.tscn" id="4_ship"]
 
 [node name="IceArrival" type="Node3D"]
 script = ExtResource("1_arrival")
@@ -11,8 +10,6 @@ script = ExtResource("1_arrival")
 [node name="Starfield" parent="." instance=ExtResource("2_stars")]
 
 [node name="IcePlanet" parent="." instance=ExtResource("3_planet")]
-
-[node name="Starship" parent="." instance=ExtResource("4_ship")]
 
 [node name="Sun" type="DirectionalLight3D" parent="."]
 light_color = Color(0.72, 0.84, 1, 1)

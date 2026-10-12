@@ -2,6 +2,7 @@ shader_type spatial;
 render_mode diffuse_burley, specular_schlick_ggx, cull_back;
 
 uniform float frozen = 0.0;
+uniform float meadow = 0.0;
 uniform vec2 wind_dir = vec2(1.0, 0.0);
 
 varying vec3 wpos;
@@ -31,6 +32,13 @@ void fragment() {
 		ALBEDO = albedo;
 		ROUGHNESS = mix(0.62, 0.16, clamp(slope * 1.35, 0.0, 1.0));
 		SPECULAR = mix(0.22, 0.78, clamp(slope, 0.0, 1.0));
+	} else if (meadow > 0.5) {
+		float blades = sin(wpos.x * 1.8 + wpos.z * 0.4) * sin(wpos.z * 2.1);
+		float fine = fract(sin(dot(wpos.xz, vec2(12.9898, 78.233))) * 43758.5453);
+		vec3 albedo = COLOR.rgb * (0.62 + blades * 0.05 + fine * 0.03);
+		ALBEDO = albedo;
+		ROUGHNESS = 0.92;
+		SPECULAR = 0.05;
 	} else {
 		float level = 1.0 - clamp(slope, 0.0, 1.0);
 		float rip = sin(wpos.x * 0.32 + wpos.z * 0.06) * sin(wpos.z * 0.41);

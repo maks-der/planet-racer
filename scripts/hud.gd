@@ -42,10 +42,12 @@ var _guide_note: Label
 var _port_panel: Control
 var _port_open := false
 var _port_ice: Button
+var _port_grass: Button
 var _map_open := false
 var map_texture: ImageTexture
 var speed_fx: ColorRect
 var _speed_mat: ShaderMaterial
+var _impact: ColorRect
 
 
 func bind(host) -> void:
@@ -57,6 +59,11 @@ func bind(host) -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.theme = UiStyle.theme()
 	add_child(root)
+	_impact = ColorRect.new()
+	_impact.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_impact.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_impact.color = Color(0.0, 0.0, 0.0, 0.0)
+	root.add_child(_impact)
 	_build_drive_ui(root)
 	_build_pause(root)
 	_build_results(root)
@@ -68,6 +75,7 @@ func _process(_dt: float) -> void:
 	if world == null or world.player == null:
 		return
 	_refresh()
+	_impact_flash()
 	if minimap:
 		minimap.queue_redraw()
 	if preview_panel and preview_panel.visible and track_preview:
@@ -84,6 +92,20 @@ func _process(_dt: float) -> void:
 		_on_escape()
 	elif _guide_pressed() and _garage == null and not _paused and not results_panel.visible:
 		_toggle_guide()
+
+
+func _impact_flash() -> void:
+	if _impact == null or world == null or world.player == null:
+		return
+	var car: HoverCar = world.player
+	var hurt := car.hit_shake
+	var heal := clampf(car.fix_flash / 1.8, 0.0, 1.0)
+	if hurt > 0.02:
+		_impact.color = Color(0.78, 0.08, 0.04, hurt * 0.45)
+	elif heal > 0.02:
+		_impact.color = Color(0.22, 0.82, 0.42, heal * heal * 0.34)
+	else:
+		_impact.color = Color(0.0, 0.0, 0.0, 0.0)
 
 
 func flash_view(view_name: String) -> void:
@@ -770,8 +792,8 @@ func _build_port(root: Control) -> void:
 	_port_panel.visible = false
 	var box := VBoxContainer.new()
 	box.set_anchors_preset(Control.PRESET_CENTER)
-	box.position = Vector2(-180, -150)
-	box.custom_minimum_size = Vector2(360, 280)
+	box.position = Vector2(-180, -210)
+	box.custom_minimum_size = Vector2(360, 400)
 	_port_panel.add_child(box)
 	var title := Label.new()
 	title.text = "SPACE PORT"
@@ -788,6 +810,9 @@ func _build_port(root: Control) -> void:
 	_port_ice = UiStyle.button("FROST REACH", 360)
 	_port_ice.pressed.connect(func() -> void: world.depart_to("ice"))
 	box.add_child(_port_ice)
+	_port_grass = UiStyle.button("EMERALD STEPPE", 360)
+	_port_grass.pressed.connect(func() -> void: world.depart_to("grass"))
+	box.add_child(_port_grass)
 	var close := UiStyle.button("CLOSE", 360)
 	close.pressed.connect(close_port)
 	box.add_child(close)
@@ -801,6 +826,9 @@ func open_port() -> void:
 	if _port_ice:
 		_port_ice.disabled = not GameState.ice_unlocked
 		_port_ice.text = "FROST REACH" if GameState.ice_unlocked else "FROST REACH  —  4 GOLD MEDALS"
+	if _port_grass:
+		_port_grass.disabled = not GameState.grass_unlocked
+		_port_grass.text = "EMERALD STEPPE" if GameState.grass_unlocked else "EMERALD STEPPE  —  4 ICE GOLDS"
 	get_tree().paused = true
 
 

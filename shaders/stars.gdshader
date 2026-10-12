@@ -1,37 +1,42 @@
 shader_type spatial;
 render_mode unshaded, cull_front;
 
-vec3 star_tint(float n) {
-	float h = fract(n * 17.13);
-	if (h < 0.2) {
-		return vec3(0.25, 0.55, 1.0);
+float hash21(vec2 p) {
+	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+vec3 star_layer(vec2 suv, float scale, float threshold, float radius) {
+	vec2 grid = suv * scale;
+	vec2 cell = floor(grid);
+	vec2 gv = fract(grid) - vec2(0.5);
+	float n = hash21(cell);
+	float dist = length(gv);
+	float spark = smoothstep(radius, 0.0, dist) * step(threshold, n);
+	float mag = spark * mix(0.22, 1.0, smoothstep(threshold, 1.0, n));
+	vec3 tint = vec3(0.94, 0.95, 1.0);
+	if (n > 0.992) {
+		tint = vec3(1.0, 0.93, 0.78);
+	} else if (n > 0.978) {
+		tint = vec3(0.72, 0.82, 1.0);
 	}
-	if (h < 0.38) {
-		return vec3(1.0, 0.72, 0.15);
+	float spike = 0.0;
+	if (n > 0.996) {
+		float ax = smoothstep(0.018, 0.0, abs(gv.x)) * smoothstep(0.34, 0.04, abs(gv.y));
+		float ay = smoothstep(0.018, 0.0, abs(gv.y)) * smoothstep(0.34, 0.04, abs(gv.x));
+		spike = (ax + ay) * 0.45;
 	}
-	if (h < 0.56) {
-		return vec3(1.0, 0.28, 0.62);
-	}
-	if (h < 0.74) {
-		return vec3(0.15, 1.0, 0.82);
-	}
-	if (h < 0.9) {
-		return vec3(1.0, 0.32, 0.12);
-	}
-	return vec3(0.96, 0.97, 1.0);
+	return tint * (mag + spike);
 }
 
 void fragment() {
-	vec2 grid = UV * vec2(520.0, 260.0);
-	vec2 cell = floor(grid);
-	vec2 gv = fract(grid) - vec2(0.5);
-	float n = fract(sin(dot(cell, vec2(127.1, 311.7))) * 43758.5453);
-	float twinkle = 0.55 + 0.45 * sin(TIME * (1.1 + n * 2.8) + n * 40.0);
-	float dist = length(gv);
-	vec3 tint = star_tint(n);
-	float spark = smoothstep(0.28, 0.02, dist) * step(0.955, n);
-	float halo = smoothstep(0.55, 0.08, dist) * step(0.985, n);
-	vec3 col = tint * spark * twinkle + tint * halo * 0.55;
+	vec3 dir = normalize(VERTEX);
+	float lift = smoothstep(-0.42, 0.28, dir.y);
+	vec3 col = mix(vec3(0.004, 0.005, 0.012), vec3(0.012, 0.016, 0.03), lift);
+	vec2 suv = vec2(atan(dir.x, dir.z) * 0.15915 + 0.5, asin(clamp(dir.y, -1.0, 1.0)) * 0.31831 + 0.5);
+	vec3 points = star_layer(suv, 2600.0, 0.9, 0.16);
+	points += star_layer(suv + vec2(0.13, 0.27), 1400.0, 0.94, 0.2);
+	points += star_layer(suv + vec2(0.41, 0.18), 520.0, 0.972, 0.28);
+	col += points;
 	ALBEDO = col;
-	EMISSION = col * 3.2;
+	EMISSION = points * 0.25;
 }

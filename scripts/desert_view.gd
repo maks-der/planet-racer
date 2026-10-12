@@ -24,6 +24,15 @@ static func build(parent: Node3D, terrain: TerrainField, roads: RoadNetwork, hos
 		if host != null:
 			host.arrival.set_progress(0.9, "OPENING THE ICE")
 		return
+	if terrain.planet == "grass":
+		if host != null:
+			host.arrival.set_progress(0.86, "RAISING THE RUINS")
+			await host.get_tree().process_frame
+		await _add_steppe_stones(parent, terrain, roads, host)
+		_add_ruins(parent, terrain, roads)
+		if host != null:
+			host.arrival.set_progress(0.9, "OPENING THE STEPPE")
+		return
 	if host != null:
 		host.arrival.set_progress(0.88, "SETTLING ROCK")
 		await host.get_tree().process_frame
@@ -41,6 +50,9 @@ static func _add_terrain(parent: Node3D, terrain: TerrainField, host: Node = nul
 	mat.shader = load("res://shaders/terrain.gdshader")
 	if terrain.planet == "ice":
 		mat.set_shader_parameter("frozen", 1.0)
+		mat.set_shader_parameter("wind_dir", Vector2(terrain.wind_dir.x, terrain.wind_dir.z))
+	elif terrain.planet == "grass":
+		mat.set_shader_parameter("meadow", 1.0)
 		mat.set_shader_parameter("wind_dir", Vector2(terrain.wind_dir.x, terrain.wind_dir.z))
 	var quads := TerrainField.RES - 1
 	const CHUNK := 80
@@ -152,6 +164,7 @@ static func _add_dirt_roads(root: Node3D, roads: RoadNetwork, terrain: TerrainFi
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/road.gdshader")
 	mat.set_shader_parameter("frozen", 1.0 if terrain.planet == "ice" else 0.0)
+	mat.set_shader_parameter("meadow", 1.0 if terrain.planet == "grass" else 0.0)
 	var inst := MeshInstance3D.new()
 	inst.name = "DirtRoads"
 	inst.mesh = mesh
@@ -647,3 +660,189 @@ static func _flat_forward(pts: PackedVector3Array, i: int) -> Vector3:
 	if fwd.length_squared() < 0.0001:
 		return Vector3(0, 0, -1)
 	return fwd.normalized()
+
+
+static func _add_steppe_stones(parent: Node3D, terrain: TerrainField, roads: RoadNetwork, host: Node = null) -> void:
+	var root := Node3D.new()
+	root.name = "Stones"
+	parent.add_child(root)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = GameState.world_seed + 2401
+	var placed := 0
+	var tries := 0
+	var span := TerrainField.HALF * 0.72
+	var rock_xf: Array = [[], [], [], []]
+	var rock_col: Array = [[], [], [], []]
+	var rock_bake: Array = []
+	for scene in ROCK_SCENES:
+		rock_bake.append(_bake_merged(scene))
+	while placed < 340 and tries < 2400:
+		tries += 1
+		var p := Vector2(rng.randf_range(-span, span), rng.randf_range(-span, span))
+		if roads.distance_to_road(p.x, p.y) < 26.0:
+			continue
+		if terrain.slope_at(p.x, p.y) > 0.38:
+			continue
+		var h := terrain.height_at(p.x, p.y)
+		var variant := rng.randi_range(0, ROCK_SCENES.size() - 1)
+		var roll := rng.randf()
+		var s := rng.randf_range(0.35, 1.15)
+		if roll > 0.62:
+			s = rng.randf_range(1.4, 3.6)
+		if roll > 0.88:
+			s = rng.randf_range(4.2, 9.5)
+		var frame := Basis.from_euler(Vector3(0.0, rng.randf_range(0.0, TAU), rng.randf_range(-0.15, 0.15)))
+		frame = frame.scaled(Vector3(s * rng.randf_range(0.75, 1.35), s * rng.randf_range(0.4, 1.15), s * rng.randf_range(0.7, 1.4)))
+		rock_xf[variant].append(Transform3D(frame, Vector3(p.x, h - 0.2, p.y)))
+		var gray := Color(0.58, 0.56, 0.5).lerp(Color(0.42, 0.4, 0.36), rng.randf())
+		rock_col[variant].append(gray)
+		solids.append({
+			"x": p.x,
+			"y": h + s * 0.35,
+			"z": p.y,
+			"r": s * 0.7,
+			"h": s * 0.9,
+		})
+		placed += 1
+		if host != null and placed % 20 == 0:
+			await host.get_tree().process_frame
+	for variant in ROCK_SCENES.size():
+		var baked: Dictionary = rock_bake[variant]
+		var tinted := _vertex_tint(baked.material)
+		_paint(root, "Stone%d" % variant, baked.mesh, tinted, rock_xf[variant], rock_col[variant])
+
+
+static func _add_ruins(parent: Node3D, terrain: TerrainField, roads: RoadNetwork) -> void:
+	var root := Node3D.new()
+	root.name = "Ruins"
+	parent.add_child(root)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = GameState.world_seed + 881
+	var stone := StandardMaterial3D.new()
+	stone.albedo_color = Color(0.62, 0.6, 0.54)
+	stone.roughness = 0.94
+	var placed := 0
+	var tries := 0
+	var span := TerrainField.HALF * 0.68
+	while placed < 52 and tries < 420:
+		tries += 1
+		var p := Vector2(rng.randf_range(-span, span), rng.randf_range(-span, span))
+		if roads.distance_to_road(p.x, p.y) < 34.0:
+			continue
+		if terrain.slope_at(p.x, p.y) > 0.28:
+			continue
+		_build_ruin(root, terrain, rng, p, stone)
+		placed += 1
+
+
+static func _build_ruin(root: Node3D, terrain: TerrainField, rng: RandomNumberGenerator, p: Vector2, stone: Material) -> void:
+	var yaw := rng.randf() * TAU
+	var roll := rng.randf()
+	var radius := rng.randf_range(3.2, 6.4)
+	var count := rng.randi_range(4, 6)
+	var width := rng.randf_range(0.38, 0.7)
+	var tall_min := 0.7
+	var tall_max := 2.1
+	if roll > 0.42:
+		radius = rng.randf_range(7.0, 13.0)
+		count = rng.randi_range(6, 10)
+		width = rng.randf_range(0.65, 1.15)
+		tall_min = 1.6
+		tall_max = 4.8
+	if roll > 0.78:
+		radius = rng.randf_range(14.0, 26.0)
+		count = rng.randi_range(8, 14)
+		width = rng.randf_range(1.1, 2.1)
+		tall_min = 3.2
+		tall_max = 8.5
+	var pad := MeshInstance3D.new()
+	var disc := CylinderMesh.new()
+	disc.top_radius = radius * 0.7
+	disc.bottom_radius = radius * 0.78
+	disc.height = lerpf(0.16, 0.55, roll)
+	pad.mesh = disc
+	pad.material_override = stone
+	var pad_h := terrain.height_at(p.x, p.y)
+	pad.position = Vector3(p.x, pad_h + disc.height * 0.35, p.y)
+	root.add_child(pad)
+	for i in count:
+		var ang := yaw + TAU * float(i) / float(count)
+		var px := p.x + cos(ang) * radius
+		var pz := p.y + sin(ang) * radius
+		var ph := terrain.height_at(px, pz)
+		var pillar := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		var tall := rng.randf_range(tall_min, tall_max)
+		var thick := width * rng.randf_range(0.75, 1.35)
+		box.size = Vector3(thick, tall, thick * rng.randf_range(0.8, 1.25))
+		pillar.mesh = box
+		pillar.material_override = stone
+		pillar.position = Vector3(px, ph + tall * 0.5, pz)
+		var fallen := rng.randf() < 0.38
+		if fallen:
+			pillar.rotation = Vector3(rng.randf_range(1.1, 1.55), ang, rng.randf_range(-0.2, 0.2))
+			pillar.position.y = ph + thick * 0.6
+		root.add_child(pillar)
+		solids.append({
+			"x": px,
+			"y": ph + tall * 0.35,
+			"z": pz,
+			"r": thick * 0.85,
+			"h": tall if not fallen else thick * 1.4,
+		})
+		if i % 2 == 0 and rng.randf() < 0.55:
+			var wall := MeshInstance3D.new()
+			var slab := BoxMesh.new()
+			var span := radius * rng.randf_range(0.35, 0.7)
+			var wall_h := rng.randf_range(tall_min * 0.45, tall_max * 0.55)
+			slab.size = Vector3(span, wall_h, thick * 0.55)
+			wall.mesh = slab
+			wall.material_override = stone
+			wall.position = Vector3(px, ph + wall_h * 0.5, pz)
+			wall.rotation.y = ang + PI * 0.5
+			root.add_child(wall)
+	_add_fireflies(root, Vector3(p.x, pad_h, p.y), radius, rng)
+
+
+static func _add_fireflies(root: Node3D, center: Vector3, reach: float, rng: RandomNumberGenerator) -> void:
+	var flies := GPUParticles3D.new()
+	flies.name = "Fireflies"
+	flies.amount = clampi(8 + int(reach * 1.1), 8, 42)
+	flies.lifetime = rng.randf_range(3.8, 6.4)
+	flies.visibility_aabb = AABB(Vector3(-reach, -3.0, -reach), Vector3(reach * 2.0, reach + 8.0, reach * 2.0))
+	flies.local_coords = true
+	flies.position = center + Vector3(0.0, 1.6, 0.0)
+	flies.emitting = true
+	var drift := ParticleProcessMaterial.new()
+	drift.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	drift.emission_sphere_radius = reach * 0.82
+	drift.direction = Vector3(0.0, 1.0, 0.0)
+	drift.spread = 70.0
+	drift.initial_velocity_min = 0.12
+	drift.initial_velocity_max = 0.65
+	drift.gravity = Vector3(0.0, 0.06, 0.0)
+	drift.scale_min = 0.28
+	drift.scale_max = 0.85
+	drift.color = Color(0.82, 1.0, 0.28, 0.95)
+	drift.hue_variation_min = -0.06
+	drift.hue_variation_max = 0.1
+	drift.turbulence_enabled = true
+	drift.turbulence_noise_strength = 0.6
+	drift.turbulence_noise_scale = 1.5
+	drift.turbulence_noise_speed = Vector3(0.12, 0.22, 0.1)
+	flies.process_material = drift
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.18, 0.18)
+	var glow := StandardMaterial3D.new()
+	glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	glow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glow.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	glow.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	glow.albedo_color = Color(0.72, 1.0, 0.22, 0.9)
+	glow.emission_enabled = true
+	glow.emission = Color(0.65, 1.0, 0.18)
+	glow.emission_energy_multiplier = 2.6
+	quad.material = glow
+	flies.draw_pass_1 = quad
+	root.add_child(flies)
+

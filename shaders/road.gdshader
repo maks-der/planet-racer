@@ -2,6 +2,7 @@ shader_type spatial;
 render_mode diffuse_burley, cull_back;
 
 uniform float frozen = 0.0;
+uniform float meadow = 0.0;
 
 void fragment() {
 	float u = UV.x;
@@ -32,6 +33,15 @@ void fragment() {
 		albedo *= 0.94 + grain * 0.08;
 		ROUGHNESS = mix(0.72, 0.46, crown);
 		SPECULAR = 0.32;
+	} else if (meadow > 0.5) {
+		vec3 verge = vec3(0.34, 0.52, 0.16);
+		vec3 worn = vec3(0.46, 0.4, 0.22);
+		vec3 rut_grass = vec3(0.28, 0.24, 0.12);
+		albedo = mix(verge, worn, crown);
+		albedo = mix(albedo, rut_grass, ruts * 0.7);
+		albedo *= 0.94 + grain * 0.08;
+		ROUGHNESS = 0.94;
+		SPECULAR = 0.04;
 	} else {
 		ROUGHNESS = mix(1.0, 0.9, crown);
 		SPECULAR = 0.04;

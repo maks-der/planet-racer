@@ -42,6 +42,8 @@ func begin(noise_seed: int) -> void:
 	_biome = _noise(noise_seed + 103, 0.0017, 2)
 	if planet == "ice":
 		_build_ice_plateaus(noise_seed)
+	elif planet == "grass":
+		_build_grass_hills(noise_seed)
 	else:
 		_build_features(noise_seed)
 	var ang := float(noise_seed % 628) * 0.01
@@ -108,6 +110,8 @@ func region_weights(x: float, z: float) -> Vector4:
 func ground_color(x: float, z: float, h: float, normal: Vector3, road: float) -> Color:
 	if planet == "ice":
 		return _ice_color(x, z, h, normal, road)
+	if planet == "grass":
+		return _grass_color(x, z, h, normal, road)
 	var w := region_weights(x, z)
 	var grit := _detail.get_noise_2d(x * 1.6, z * 1.6) * 0.5 + 0.5
 	var slope := clampf(1.0 - normal.y, 0.0, 1.0)
@@ -135,6 +139,8 @@ func ground_color(x: float, z: float, h: float, normal: Vector3, road: float) ->
 func waste_height(x: float, z: float) -> float:
 	if planet == "ice":
 		return 6.0 + _sastrugi(x, z) * 0.65
+	if planet == "grass":
+		return _grass_base(x, z)
 	var w := region_weights(x, z)
 	var n := _waste.get_noise_2d(x, z)
 	var ridge := pow(1.0 - absf(_waste_ridge.get_noise_2d(x, z)), 1.8)
@@ -146,7 +152,7 @@ func waste_height(x: float, z: float) -> float:
 
 
 func storm_factor(x: float, z: float) -> float:
-	if planet == "ice":
+	if planet == "ice" or planet == "grass":
 		return 0.0
 	var dist := Vector2(x, z).length()
 	return Util.smoothstep(HALF * 0.96, HALF * 1.28, dist)
@@ -420,6 +426,8 @@ func _build_features(noise_seed: int) -> void:
 func _base_height(x: float, z: float) -> float:
 	if planet == "ice":
 		return 6.0 + _sastrugi(x, z)
+	if planet == "grass":
+		return _grass_base(x, z)
 	var w := region_weights(x, z)
 	var dune := _dune.get_noise_2d(x, z)
 	var detail := _detail.get_noise_2d(x, z)
@@ -512,6 +520,8 @@ func cut_road_canyons(edges: Array) -> void:
 func _highland_lift(x: float, z: float) -> float:
 	if planet == "ice":
 		return _plateau_lift(x, z)
+	if planet == "grass":
+		return _hill_lift(x, z)
 	var fade := _border_fade(x, z)
 	if fade <= 0.001:
 		return 0.0
@@ -555,6 +565,61 @@ func _plateau_lift(x: float, z: float) -> float:
 			continue
 		var cliff := float(mesa.get("cliff", 12.0))
 		var shape := Util.smoothstep(radius, maxf(radius - cliff, 1.0), d)
+		lift = maxf(lift, float(mesa.height) * shape)
+	return lift * fade
+
+
+func _build_grass_hills(noise_seed: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = noise_seed + 140
+	_mesas.clear()
+	_canyons.clear()
+	var reach := HALF * 0.8
+	for _i in 12:
+		_mesas.append({
+			"pos": Vector2(rng.randf_range(-reach, reach), rng.randf_range(-reach, reach)),
+			"radius": rng.randf_range(240.0, 560.0),
+			"height": rng.randf_range(16.0, 44.0),
+			"flat": false,
+		})
+
+
+func _grass_base(x: float, z: float) -> float:
+	var roll := _dune.get_noise_2d(x * 0.42, z * 0.42)
+	var mid := _mask.get_noise_2d(x * 0.9, z * 0.9)
+	var fine := _detail.get_noise_2d(x, z)
+	return maxf(4.0, 12.0 + roll * 14.0 + mid * 5.5 + fine * 0.45)
+
+
+func _grass_color(x: float, z: float, h: float, normal: Vector3, road: float) -> Color:
+	var n := _detail.get_noise_2d(x * 0.35, z * 0.35) * 0.5 + 0.5
+	var broad := _dune.get_noise_2d(x * 0.2, z * 0.2) * 0.5 + 0.5
+	var lush := Color(0.06, 0.22, 0.1)
+	var bright := Color(0.1, 0.28, 0.11)
+	var deep := Color(0.02, 0.12, 0.06)
+	var col := deep.lerp(lush, n).lerp(bright, broad * 0.45)
+	var slope := clampf(1.0 - normal.y, 0.0, 1.0)
+	col = col.lerp(Color(0.02, 0.1, 0.05), clampf(slope * 1.4, 0.0, 0.5))
+	if h > 28.0:
+		col = col.lerp(Color(0.08, 0.24, 0.1), clampf((h - 28.0) / 30.0, 0.0, 0.35))
+	if road > 0.05:
+		var track := Color(0.48, 0.42, 0.24)
+		col = col.lerp(track, clampf(road, 0.0, 1.0) * 0.65)
+	return col
+
+
+func _hill_lift(x: float, z: float) -> float:
+	var fade := _border_fade(x, z)
+	if fade <= 0.001:
+		return 0.0
+	var lift := 0.0
+	for mesa in _mesas:
+		var pos := Vector2(mesa.pos)
+		var d := Vector2(x, z).distance_to(pos)
+		var radius: float = mesa.radius
+		if d >= radius:
+			continue
+		var shape := Util.smoothstep(radius, radius * 0.22, d)
 		lift = maxf(lift, float(mesa.height) * shape)
 	return lift * fade
 

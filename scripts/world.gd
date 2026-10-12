@@ -47,6 +47,7 @@ var _finish_until := 0
 const VIEW_NAMES: PackedStringArray = ["CHASE", "FAR", "HOOD", "BUMPER"]
 const ArrivalScene := preload("res://scenes/loading/arrival.tscn")
 const IceArrivalScene := preload("res://scenes/loading/ice_arrival.tscn")
+const GrassArrivalScene := preload("res://scenes/loading/grass_arrival.tscn")
 const CarScene := preload("res://scenes/vehicles/hover_car.tscn")
 const BeaconScene := preload("res://scenes/props/beacon.tscn")
 const GateScene := preload("res://scenes/props/gate.tscn")
@@ -64,7 +65,12 @@ func _ready() -> void:
 	_env = WorldEnvironment.new()
 	_env.environment = _space_environment()
 	add_child(_env)
-	arrival = IceArrivalScene.instantiate() if GameState.planet == "ice" else ArrivalScene.instantiate()
+	var packed: PackedScene = ArrivalScene
+	if GameState.planet == "ice":
+		packed = IceArrivalScene
+	elif GameState.planet == "grass":
+		packed = GrassArrivalScene
+	arrival = packed.instantiate()
 	if _smoke:
 		arrival.voyage_time = 0.45
 	add_child(arrival)
@@ -83,9 +89,15 @@ func _ready() -> void:
 	terrain.begin(GameState.world_seed)
 	var band := 4
 	var ice := GameState.planet == "ice"
+	var grass := GameState.planet == "grass"
+	var mapping := "MAPPING THE DUNES"
+	if ice:
+		mapping = "MAPPING THE ICE"
+	elif grass:
+		mapping = "MAPPING THE STEPPE"
 	for z in range(0, TerrainField.RES, band):
 		terrain.write_rows(z, mini(z + band, TerrainField.RES))
-		arrival.set_progress(0.08 + 0.36 * float(z) / float(TerrainField.RES), "MAPPING THE ICE" if ice else "MAPPING THE DUNES")
+		arrival.set_progress(0.08 + 0.36 * float(z) / float(TerrainField.RES), mapping)
 		await get_tree().process_frame
 	arrival.set_progress(0.46, "LAYING THE RACE ROADS")
 	var field := terrain
@@ -139,11 +151,18 @@ func _ready() -> void:
 	while arrival.elapsed < arrival.voyage_time:
 		await get_tree().process_frame
 	await arrival.play_out(func() -> void:
-		_env.environment = _ice_environment() if GameState.planet == "ice" else _desert_environment()
 		if GameState.planet == "ice":
+			_env.environment = _ice_environment()
 			_sun.light_color = Color(0.62, 0.75, 0.98)
 			_sun.light_energy = 0.48
 			_sun.rotation_degrees = Vector3(-14, 148, 0)
+		elif GameState.planet == "grass":
+			_env.environment = _grass_environment()
+			_sun.light_color = Color(1.0, 0.91, 0.74)
+			_sun.light_energy = 1.4
+			_sun.rotation_degrees = Vector3(-36.0, 64.0, 0.0)
+		else:
+			_env.environment = _desert_environment()
 		_sun.visible = true
 		cam.current = true
 	)
@@ -154,7 +173,7 @@ func _ready() -> void:
 	hud.bind(self)
 	if GameState.planet == "ice":
 		_build_snow()
-	else:
+	elif GameState.planet != "grass":
 		_build_storm()
 	var console := DebugConsole.new()
 	console.world = self
@@ -166,7 +185,11 @@ func _ready() -> void:
 
 func _mark_highlands() -> void:
 	if arrival != null:
-		var label := "CUTTING ROADS THROUGH THE PLATEAUS" if GameState.planet == "ice" else "CUTTING CANYONS THROUGH THE HIGHLANDS"
+		var label := "CUTTING CANYONS THROUGH THE HIGHLANDS"
+		if GameState.planet == "ice":
+			label = "CUTTING ROADS THROUGH THE PLATEAUS"
+		elif GameState.planet == "grass":
+			label = "LAYING ROADS OVER THE HILLS"
 		arrival.set_progress(0.48, label)
 
 
@@ -413,10 +436,49 @@ func _ice_environment() -> Environment:
 	return env
 
 
+func _grass_environment() -> Environment:
+	var env := Environment.new()
+	env.background_mode = Environment.BG_SKY
+	var sky := Sky.new()
+	var sky_mat := ShaderMaterial.new()
+	sky_mat.shader = load("res://shaders/clouds.gdshader")
+	sky_mat.set_shader_parameter("sky_top", Color(0.03, 0.12, 0.42))
+	sky_mat.set_shader_parameter("sky_horizon", Color(0.2, 0.4, 0.74))
+	sky_mat.set_shader_parameter("ground_horizon", Color(0.12, 0.28, 0.18))
+	sky_mat.set_shader_parameter("ground_bottom", Color(0.05, 0.1, 0.08))
+	sky_mat.set_shader_parameter("cloud_cover", 0.28)
+	sky_mat.set_shader_parameter("meadow", 0.0)
+	sky_mat.set_shader_parameter("sunset", 0.0)
+	sky_mat.set_shader_parameter("fluffy", 1.0)
+	sky_mat.set_shader_parameter("moon_dir", Vector3(-0.42, 0.55, -0.72))
+	var blow := terrain.wind_dir
+	sky_mat.set_shader_parameter("wind_dir", Vector2(blow.x, blow.z))
+	_sky_mat = sky_mat
+	sky.sky_material = sky_mat
+	env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	env.ambient_light_energy = 0.82
+	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.glow_enabled = true
+	env.glow_intensity = 0.32
+	env.glow_strength = 0.6
+	env.glow_bloom = 0.06
+	env.glow_hdr_threshold = 1.2
+	env.fog_enabled = true
+	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
+	env.fog_density = 0.00028
+	env.fog_light_color = Color(0.55, 0.68, 0.88)
+	env.fog_aerial_perspective = 0.32
+	env.fog_sky_affect = 0.22
+	return env
+
+
 func depart_to(planet_id: String, force: bool = false) -> void:
-	if planet_id != "desert" and planet_id != "ice":
+	if planet_id != "desert" and planet_id != "ice" and planet_id != "grass":
 		return
 	if planet_id == "ice" and not GameState.ice_unlocked and not force:
+		return
+	if planet_id == "grass" and not GameState.grass_unlocked and not force:
 		return
 	if planet_id == GameState.planet:
 		if hud:
@@ -769,15 +831,22 @@ func _fix_sign(holder: Node3D, pos: Vector3, yaw: float) -> void:
 
 
 func _heal_at_stations() -> void:
-	if player == null or player.hp >= HoverCar.HP_MAX - 0.05:
-		return
-	var flat := Vector2(player.global_position.x, player.global_position.z)
-	for station in fix_stations:
-		if absf(player.global_position.y - station.y) > 6.0:
+	var cars: Array[HoverCar] = []
+	if player:
+		cars.append(player)
+	for bot in bots:
+		if is_instance_valid(bot):
+			cars.append(bot)
+	for car in cars:
+		if car.hp >= HoverCar.HP_MAX - 0.05:
 			continue
-		if flat.distance_to(Vector2(station.x, station.z)) <= 7.5:
-			player.restore_hull()
-			return
+		var flat := Vector2(car.global_position.x, car.global_position.z)
+		for station in fix_stations:
+			if absf(car.global_position.y - station.y) > 6.0:
+				continue
+			if flat.distance_to(Vector2(station.x, station.z)) <= 7.5:
+				car.restore_hull()
+				break
 
 
 func _build_gates(def: Dictionary) -> void:
@@ -1141,7 +1210,7 @@ func _build_snow() -> void:
 func _update_storm(dt: float) -> void:
 	if player == null or _env == null or _env.environment == null or _sky_mat == null:
 		return
-	if terrain.planet == "ice":
+	if terrain.planet == "ice" or terrain.planet == "grass":
 		storm_level = 0.0
 		if wasteland:
 			wasteland.follow(player.global_position)
@@ -1204,6 +1273,7 @@ func _update_camera(dt: float) -> void:
 			_snap_camera = false
 			cam.global_transform = cam.global_transform.interpolate_with(seat, blend_hood)
 			cam.fov = lerpf(cam.fov, 84.0, blend_hood)
+			_apply_camera_fx()
 			return
 		3:
 			dist = 2.7
@@ -1232,6 +1302,26 @@ func _update_camera(dt: float) -> void:
 	if cam.global_position.distance_squared_to(look) > 0.01:
 		cam.look_at(look, Vector3.UP)
 	cam.fov = lerpf(cam.fov, target_fov, blend)
+	_apply_camera_fx()
+
+
+func _apply_camera_fx() -> void:
+	if player == null or cam == null:
+		return
+	var trauma := player.hit_shake
+	var t := Time.get_ticks_msec() * 0.001
+	if trauma > 0.01:
+		var kick := trauma * trauma
+		var nudge := Vector3(sin(t * 47.0) * 0.32, cos(t * 38.0) * 0.18, sin(t * 29.0) * 0.12) * kick
+		cam.global_position += cam.global_transform.basis * nudge
+		cam.rotate_object_local(Vector3(0.0, 0.0, 1.0), sin(t * 53.0) * kick * 0.05)
+		cam.fov = minf(cam.fov + kick * 9.0, 110.0)
+		return
+	var heal := clampf(player.fix_flash / 1.8, 0.0, 1.0)
+	if heal > 0.02:
+		var ease := heal * heal
+		cam.global_position += cam.global_transform.basis.y * ease * 0.28
+		cam.fov = maxf(cam.fov - ease * 4.5, 42.0)
 
 
 func _run_smoke() -> void:

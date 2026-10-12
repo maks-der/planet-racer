@@ -1,0 +1,29 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/grass_arrival.gd" id="1_arrival"]
+[ext_resource type="PackedScene" path="res://scenes/loading/starfield.tscn" id="2_stars"]
+[ext_resource type="PackedScene" path="res://scenes/loading/grass_planet.tscn" id="3_planet"]
+
+[node name="GrassArrival" type="Node3D"]
+script = ExtResource("1_arrival")
+
+[node name="Starfield" parent="." instance=ExtResource("2_stars")]
+
+[node name="GrassPlanet" parent="." instance=ExtResource("3_planet")]
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+light_color = Color(1, 0.97, 0.9, 1)
+light_energy = 2.2
+shadow_enabled = false
+
+[node name="Fill" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.2, 2.4, 12.5)
+light_color = Color(0.65, 0.82, 1, 1)
+light_energy = 0.7
+omni_range = 30.0
+
+[node name="Camera3D" type="Camera3D" parent="."]
+current = true
+fov = 46.0
+near = 0.05
+far = 400.0

@@ -28,6 +28,7 @@ var boosting := false
 var controls_enabled := true
 var last_steer := 0.0
 var fix_flash := 0.0
+var hit_shake := 0.0
 const SLOPE_LIMIT := 0.5
 const NOSE_AHEAD := 1.95
 const SPEED_LIMIT_KMH := 1227.0
@@ -76,7 +77,7 @@ func _ready() -> void:
 
 
 func note_collision(speed: float, decel: float) -> void:
-	if ai or smoke_drive or decel < 9.0:
+	if smoke_drive or decel < 9.0:
 		return
 	if decel > _hit_decel:
 		_hit_decel = decel
@@ -91,7 +92,7 @@ func restore_hull() -> void:
 
 
 func _crippled() -> bool:
-	return hp <= 0.0 and not ai
+	return hp <= 0.0
 
 
 func _boost_limit() -> float:
@@ -101,11 +102,13 @@ func _boost_limit() -> float:
 func _apply_damage() -> void:
 	if _hit_decel <= 0.0:
 		return
-	var amount := _hit_decel * (0.55 + _hit_speed / 70.0)
+	var amount := _hit_decel * (0.22 + _hit_speed / 175.0)
 	_hit_decel = 0.0
 	_hit_speed = 0.0
 	hp = maxf(0.0, hp - amount)
 	boost = minf(boost, _boost_limit())
+	if not ai and amount > 0.35:
+		hit_shake = maxf(hit_shake, clampf(amount / 14.0, 0.28, 1.0))
 
 
 func _physics_process(dt: float) -> void:
@@ -113,6 +116,8 @@ func _physics_process(dt: float) -> void:
 		return
 	if fix_flash > 0.0:
 		fix_flash = maxf(0.0, fix_flash - dt)
+	if hit_shake > 0.0:
+		hit_shake = maxf(0.0, hit_shake - dt * 1.7)
 	_time += dt
 	var input := _read_input()
 	_steer_f = lerpf(_steer_f, float(input.steer), 1.0 - exp(-7.5 * dt))

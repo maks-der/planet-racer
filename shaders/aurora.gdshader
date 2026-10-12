@@ -49,24 +49,24 @@ void sky() {
 	vec2 w = normalize(wind_dir + vec2(0.001));
 	float across = dot(dir.xz, vec2(-w.y, w.x));
 	float along = dot(dir.xz, w);
-	float wave = fbm(vec2(across * 1.6 + TIME * 0.03, h * 2.4 + along * 0.35));
-	float curtain = sin(across * 8.0 + wave * 4.5);
-	curtain = smoothstep(0.05, 0.82, curtain * 0.5 + 0.5);
-	float sheet = fbm(vec2(across * 2.4 - TIME * 0.02, h * 4.0 + 3.0));
-	float band = smoothstep(-0.02, 0.16, h) * (1.0 - smoothstep(0.38, 0.72, h));
-	float aurora = curtain * smoothstep(0.32, 0.72, sheet) * band;
-	float hue = fbm(vec2(across * 0.7 + 4.0, 1.5));
-	vec3 green = vec3(0.15, 0.95, 0.5);
-	vec3 teal = vec3(0.15, 0.7, 1.0);
-	vec3 violet = vec3(0.55, 0.22, 0.95);
-	vec3 aurora_col = mix(green, teal, hue);
-	aurora_col = mix(aurora_col, violet, smoothstep(0.5, 0.85, hue));
-	col += aurora_col * aurora * 1.45;
-
-	float curtain2 = sin(across * 4.5 + 1.8 + fbm(vec2(TIME * 0.04, across)) * 2.0);
-	curtain2 = smoothstep(0.35, 0.9, curtain2 * 0.5 + 0.5);
-	float band2 = smoothstep(0.08, 0.28, h) * (1.0 - smoothstep(0.48, 0.78, h));
-	col += mix(teal, violet, 0.65) * curtain2 * band2 * 0.42;
+	float drift = TIME * 0.012;
+	float rays = fbm(vec2(across * 2.4 + drift, h * 0.35 + along * 0.15));
+	float sheet = fbm(vec2(across * 1.1 - drift * 0.6, h * 0.8 + 2.0));
+	float columns = smoothstep(0.38, 0.78, fbm(vec2(across * 4.5 + rays, 1.7)));
+	float hem = smoothstep(0.0, 0.16, h);
+	float crown = 1.0 - smoothstep(0.16, 0.58, h);
+	float veil = columns * hem * crown * smoothstep(0.28, 0.7, sheet);
+	float rib = smoothstep(0.62, 0.95, sin(across * 14.0 + rays * 5.0) * 0.5 + 0.5);
+	veil *= mix(0.42, 1.0, rib);
+	vec3 green = vec3(0.22, 0.72, 0.38);
+	vec3 pale = vec3(0.45, 0.78, 0.58);
+	vec3 lower = vec3(0.48, 0.28, 0.42);
+	vec3 aurora_col = mix(green, pale, rays);
+	aurora_col = mix(lower, aurora_col, smoothstep(0.02, 0.2, h));
+	col += aurora_col * veil * 0.42;
+	float high = smoothstep(0.2, 0.34, h) * (1.0 - smoothstep(0.42, 0.7, h));
+	float haze = smoothstep(0.45, 0.8, fbm(vec2(across * 0.7 - drift, along * 0.2 + 3.0)));
+	col += vec3(0.16, 0.42, 0.32) * high * haze * 0.16;
 
 	if (LIGHT0_ENABLED) {
 		float moon = clamp(dot(EYEDIR, LIGHT0_DIRECTION), 0.0, 1.0);

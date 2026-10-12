@@ -89,8 +89,10 @@ const SWATCHES: Array[Color] = [
 var world_seed: int = 0
 var desert_seed: int = 0
 var ice_seed: int = 0
+var grass_seed: int = 0
 var planet := "desert"
 var ice_unlocked := false
+var grass_unlocked := false
 var preset_index: int = 0
 var primary := Color("14e6ff")
 var accent := Color("ff8a1e")
@@ -165,6 +167,7 @@ func begin_new_world() -> void:
 	if desert_seed < 1:
 		desert_seed = 1
 	ice_seed = 0
+	grass_seed = 0
 	world_seed = desert_seed
 	planet = "desert"
 	best_times.clear()
@@ -242,9 +245,31 @@ func award_medal(world_id: int, race_name: String, place: int) -> void:
 	medals[key] = rank
 	if desert_seed > 0 and gold_count(desert_seed) >= 4:
 		ice_unlocked = true
+	if ice_seed > 0 and gold_count(ice_seed) >= 4:
+		grass_unlocked = true
 	_save_medals()
 	_save_progress()
-	just_invited = before < 4 and gold_count(world_id) >= 4 and world_id == desert_seed
+	var desert_invite := before < 4 and gold_count(world_id) >= 4 and world_id == desert_seed
+	var ice_invite := before < 4 and gold_count(world_id) >= 4 and world_id == ice_seed
+	just_invited = desert_invite or ice_invite
+
+
+func set_medal(world_id: int, race_name: String, rank: int) -> void:
+	var had_ice := ice_unlocked
+	var had_grass := grass_unlocked
+	var key := _medal_key(world_id, race_name)
+	var clamped := clampi(rank, 0, 3)
+	if clamped == 0:
+		medals.erase(key)
+	else:
+		medals[key] = clamped
+	if desert_seed > 0 and gold_count(desert_seed) >= 4:
+		ice_unlocked = true
+	if ice_seed > 0 and gold_count(ice_seed) >= 4:
+		grass_unlocked = true
+	just_invited = (not had_ice and ice_unlocked) or (not had_grass and grass_unlocked)
+	_save_medals()
+	_save_progress()
 
 
 func _medal_key(world_id: int, race_name: String) -> String:
@@ -272,11 +297,13 @@ func _load_medals() -> void:
 func planet_title() -> String:
 	if planet == "ice":
 		return "FROST REACH"
+	if planet == "grass":
+		return "EMERALD STEPPE"
 	return "VERMILION WASTES"
 
 
 func set_planet(id: String) -> void:
-	if id != "desert" and id != "ice":
+	if id != "desert" and id != "ice" and id != "grass":
 		return
 	planet = id
 	if planet == "ice":
@@ -286,6 +313,15 @@ func set_planet(id: String) -> void:
 			if ice_seed < 1:
 				ice_seed = 3
 		world_seed = ice_seed
+	elif planet == "grass":
+		if grass_seed < 1:
+			var base := ice_seed if ice_seed > 0 else desert_seed
+			if base < 1:
+				base = world_seed if world_seed > 0 else 1
+			grass_seed = (base * 29 + 137) % 999983
+			if grass_seed < 1:
+				grass_seed = 5
+		world_seed = grass_seed
 	else:
 		if desert_seed < 1:
 			desert_seed = world_seed if world_seed > 0 else 1
@@ -298,7 +334,9 @@ func _save_progress() -> void:
 	cf.set_value("progress", "planet", planet)
 	cf.set_value("progress", "desert_seed", desert_seed)
 	cf.set_value("progress", "ice_seed", ice_seed)
+	cf.set_value("progress", "grass_seed", grass_seed)
 	cf.set_value("progress", "ice_unlocked", ice_unlocked)
+	cf.set_value("progress", "grass_unlocked", grass_unlocked)
 	cf.set_value("progress", "world_seed", world_seed)
 	cf.save("user://progress.cfg")
 
@@ -308,11 +346,13 @@ func _load_progress() -> void:
 	if cf.load("user://progress.cfg") != OK:
 		return
 	planet = str(cf.get_value("progress", "planet", "desert"))
-	if planet != "ice":
+	if planet != "ice" and planet != "grass":
 		planet = "desert"
 	desert_seed = int(cf.get_value("progress", "desert_seed", 0))
 	ice_seed = int(cf.get_value("progress", "ice_seed", 0))
+	grass_seed = int(cf.get_value("progress", "grass_seed", 0))
 	ice_unlocked = bool(cf.get_value("progress", "ice_unlocked", false))
+	grass_unlocked = bool(cf.get_value("progress", "grass_unlocked", false))
 	world_seed = int(cf.get_value("progress", "world_seed", 0))
 	if desert_seed < 1 and world_seed > 0 and planet == "desert":
 		desert_seed = world_seed

@@ -19,6 +19,7 @@ var shortcut_edges := 0
 
 var _hash: Dictionary = {}
 var _tracks: Array[Dictionary] = []
+var _loop_scale: Array[float] = []
 var _rng := RandomNumberGenerator.new()
 
 
@@ -114,6 +115,7 @@ func _add_node(p: Vector2) -> int:
 
 func _lay_tracks() -> void:
 	_tracks.clear()
+	_loop_scale.clear()
 	for slot in 8:
 		var control := _article_polygon(slot)
 		_tracks.append(_commit_loop(control))
@@ -121,17 +123,35 @@ func _lay_tracks() -> void:
 
 
 func _article_polygon(slot: int) -> PackedVector2Array:
+	var stretch := 1.0
+	if terrain.planet == "ice":
+		stretch = 2.0
+	elif terrain.planet == "grass":
+		stretch = 4.0
 	var ang := TAU * float(slot) / 8.0 + _rng.randf_range(-0.22, 0.22)
-	var ring := 540.0 + _rng.randf_range(-40.0, 50.0)
-	var center := Vector2(cos(ang), sin(ang)) * ring
-	var half_x := lerpf(250.0, 390.0, float(slot) / 7.0) * _rng.randf_range(0.92, 1.06)
+	var raw_x := lerpf(250.0, 390.0, float(slot) / 7.0) * _rng.randf_range(0.92, 1.06)
+	var half_x := raw_x * stretch
 	var half_z := half_x * _rng.randf_range(0.68, 0.9)
+	var limit := TerrainField.HALF * 0.76
+	var room := limit * 0.92
+	var extent := maxf(half_x, half_z)
+	if extent > room:
+		var fit := room / extent
+		half_x *= fit
+		half_z *= fit
+		extent = room
+	_loop_scale.append(half_x / raw_x)
+	var ring_cap := maxf(0.0, limit - extent - 24.0)
+	var ring := minf(540.0 + _rng.randf_range(-40.0, 50.0), ring_cap)
+	var center := Vector2(cos(ang), sin(ang)) * ring
 	var difficulty := lerpf(0.45, 7.0, float(slot) / 7.0)
 	var span := maxf(half_x, half_z) * 2.0
 	var apart := maxf(88.0, span * 0.07)
 	var max_disp := span * 0.16
 	for attempt in 8:
 		var shaped := _shape_polygon(center, half_x, half_z, difficulty, apart, max_disp, attempt < 6)
+		if stretch > 1.01:
+			shaped = _spin_loop(shaped, center, ang)
 		if shaped.size() < 6 or _closed_crosses(shaped):
 			difficulty = minf(difficulty * 1.65, 16.0)
 			max_disp *= 0.82
@@ -142,7 +162,20 @@ func _article_polygon(slot: int) -> PackedVector2Array:
 			max_disp *= 0.82
 			continue
 		return shaped
-	return _oval_fallback(center, half_x, half_z, apart)
+	var fallback := _oval_fallback(center, half_x, half_z, apart)
+	if stretch > 1.01:
+		fallback = _spin_loop(fallback, center, ang)
+	return fallback
+
+
+func _spin_loop(pts: PackedVector2Array, origin: Vector2, yaw: float) -> PackedVector2Array:
+	var c := cos(yaw)
+	var s := sin(yaw)
+	var spun := PackedVector2Array()
+	for p in pts:
+		var delta := p - origin
+		spun.append(_clamp_map(origin + Vector2(delta.x * c - delta.y * s, delta.x * s + delta.y * c)))
+	return spun
 
 
 func _shape_polygon(center: Vector2, half_x: float, half_z: float, difficulty: float, apart: float, max_disp: float, displace: bool) -> PackedVector2Array:
@@ -791,7 +824,8 @@ func _build_races() -> void:
 	for i in _tracks.size():
 		var edge_ids: Array = _tracks[i].edges
 		var pts := _align_to_apex(_trace_loop(edge_ids))
-		races.append(_finalize_race(_pack_points(pts, edge_ids), circuit_names[i], "circuit"))
+		var loop_scale := 1.0 if i >= _loop_scale.size() else _loop_scale[i]
+		races.append(_finalize_race(_pack_points(pts, edge_ids), circuit_names[i], "circuit", loop_scale))
 
 
 func _trace_loop(edge_ids: Array) -> PackedVector3Array:
@@ -948,14 +982,21 @@ func _pack_points(pts: PackedVector3Array, edge_ids: Array) -> Dictionary:
 	}
 
 
-func _finalize_race(data: Dictionary, race_name: String, kind: String) -> Dictionary:
+func _finalize_race(data: Dictionary, race_name: String, kind: String, loop_scale: float = 1.0) -> Dictionary:
 	var pts: PackedVector3Array = data.points
 	var dists: PackedFloat32Array = data.distances
 	var length := float(data.length)
 	var circuit := kind == "circuit"
 	var laps := 1
 	if circuit:
-		laps = 3 if length < 1500.0 else 2
+		var want := 1.0
+		if terrain.planet == "ice":
+			want = 2.0
+		elif terrain.planet == "grass":
+			want = 4.0
+		var unscaled := length / maxf(loop_scale, 0.25)
+		var base_laps := 3 if unscaled < 1500.0 else 2
+		laps = maxi(1, int(round(unscaled * float(base_laps) * want / maxf(length, 1.0))))
 	var peaks := _apex_indices(pts)
 	var cps := PackedVector3Array()
 	var cp_dist := PackedFloat32Array()
@@ -978,7 +1019,7 @@ func _finalize_race(data: Dictionary, race_name: String, kind: String) -> Dictio
 	if bool(data.has_shortcut):
 		features.append("shortcuts")
 	if features.is_empty():
-		features.append("open ice" if terrain.planet == "ice" else "open desert")
+		features.append("open ice" if terrain.planet == "ice" else ("open steppe" if terrain.planet == "grass" else "open desert"))
 	var blurb := "%s · %s · %s" % [
 		"Circuit" if circuit else "Point to point",
 		Util.km(length * float(laps)),
