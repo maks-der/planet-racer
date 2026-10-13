@@ -19,13 +19,7 @@ vec3 star_layer(vec2 suv, float scale, float threshold, float radius) {
 	} else if (n > 0.978) {
 		tint = vec3(0.72, 0.82, 1.0);
 	}
-	float spike = 0.0;
-	if (n > 0.996) {
-		float ax = smoothstep(0.018, 0.0, abs(gv.x)) * smoothstep(0.34, 0.04, abs(gv.y));
-		float ay = smoothstep(0.018, 0.0, abs(gv.y)) * smoothstep(0.34, 0.04, abs(gv.x));
-		spike = (ax + ay) * 0.45;
-	}
-	return tint * (mag + spike);
+	return tint * mag;
 }
 
 void fragment() {
@@ -33,9 +27,8 @@ void fragment() {
 	float lift = smoothstep(-0.42, 0.28, dir.y);
 	vec3 col = mix(vec3(0.004, 0.005, 0.012), vec3(0.012, 0.016, 0.03), lift);
 	vec2 suv = vec2(atan(dir.x, dir.z) * 0.15915 + 0.5, asin(clamp(dir.y, -1.0, 1.0)) * 0.31831 + 0.5);
-	vec3 points = star_layer(suv, 2600.0, 0.9, 0.16);
-	points += star_layer(suv + vec2(0.13, 0.27), 1400.0, 0.94, 0.2);
-	points += star_layer(suv + vec2(0.41, 0.18), 520.0, 0.972, 0.28);
+	vec3 points = star_layer(suv, 2600.0, 0.9, 0.14);
+	points += star_layer(suv + vec2(0.13, 0.27), 1800.0, 0.94, 0.12);
 	col += points;
 	ALBEDO = col;
 	EMISSION = points * 0.25;

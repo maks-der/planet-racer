@@ -38,6 +38,18 @@ static func hud_panel() -> StyleBoxFlat:
 	return box
 
 
+static func trap_focus(buttons: Array[Button]) -> void:
+	for btn in buttons:
+		if not is_instance_valid(btn):
+			continue
+		var path := btn.get_path()
+		btn.focus_mode = Control.FOCUS_ALL
+		btn.focus_neighbor_top = path
+		btn.focus_neighbor_bottom = path
+		btn.focus_neighbor_left = path
+		btn.focus_neighbor_right = path
+
+
 static func button(text: String, width: float = 320.0) -> Button:
 	var b := Button.new()
 	b.text = text

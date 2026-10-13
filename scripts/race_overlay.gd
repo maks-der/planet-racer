@@ -63,6 +63,10 @@ func _draw_map() -> void:
 		var ms := _map_point(station, player, center, ppm)
 		if _on_map(ms):
 			draw_circle(ms, 3.2, Color(0.3, 0.95, 0.48))
+	for bay in world.garages:
+		var mg := _map_point(bay, player, center, ppm)
+		if _on_map(mg):
+			draw_rect(Rect2(mg - Vector2(3, 3), Vector2(6, 6)), Color(1.0, 0.72, 0.28))
 	var port: Vector3 = world.port_position
 	var mp_port := _map_point(port, player, center, ppm)
 	if _on_map(mp_port):
@@ -94,6 +98,8 @@ func _draw_world() -> void:
 		draw_circle(_world_point(bp, origin, map_scale, half), 4.0, Color(0.25, 0.95, 0.42))
 	for station in world.fix_stations:
 		draw_circle(_world_point(station, origin, map_scale, half), 3.4, Color(0.3, 0.95, 0.48))
+	for bay in world.garages:
+		draw_rect(Rect2(_world_point(bay, origin, map_scale, half) - Vector2(4, 4), Vector2(8, 8)), Color(1.0, 0.72, 0.28))
 	var port := _world_point(world.port_position, origin, map_scale, half)
 	draw_rect(Rect2(port - Vector2(5, 5), Vector2(10, 10)), Color(0.5, 0.95, 1.0))
 	for bot in world.bots:

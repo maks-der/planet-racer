@@ -99,6 +99,17 @@ var accent := Color("ff8a1e")
 var best_times: Dictionary = {}
 var medals: Dictionary = {}
 var just_invited := false
+var money := 1500
+var owned: Array[bool] = [true, false, false, false]
+var part_levels: Array[int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+var pending_bet := 0
+var purse_note := ""
+
+const CAR_COST: Array[int] = [0, 8000, 8500, 10000]
+const PARTS: PackedStringArray = ["ENGINE", "GRIP", "BOOST", "AIR"]
+const PART_COST: Array[int] = [1000, 2500, 5000]
+const BET_AMOUNTS: Array[int] = [250, 500, 1000, 2500]
+const BET_MULT := 3
 
 
 func _ready() -> void:
@@ -176,6 +187,115 @@ func begin_new_world() -> void:
 
 func preset() -> Dictionary:
 	return PRESETS[clampi(preset_index, 0, PRESETS.size() - 1)]
+
+
+func tuned_stats() -> Dictionary:
+	var stats: Dictionary = preset().duplicate()
+	var engine := _part(preset_index, 0)
+	var grip := _part(preset_index, 1)
+	var boost := _part(preset_index, 2)
+	var air := _part(preset_index, 3)
+	stats.accel = float(stats.accel) + float(engine) * 2.2
+	stats.grip = float(stats.grip) + float(grip) * 1.5
+	stats.drift_grip = float(stats.drift_grip) + float(grip) * 0.18
+	stats.boost_regen = float(stats.boost_regen) + float(boost) * 5.0
+	stats.boost_drain = maxf(14.0, float(stats.boost_drain) - float(boost) * 3.0)
+	stats.jump = float(stats.jump) + float(air) * 1.6
+	stats.air = float(stats.air) + float(air) * 0.14
+	return stats
+
+
+func owns_car(index: int) -> bool:
+	return index >= 0 and index < owned.size() and owned[index]
+
+
+func _part(car_i: int, part_i: int) -> int:
+	var slot := car_i * 4 + part_i
+	if slot < 0 or slot >= part_levels.size():
+		return 0
+	return clampi(part_levels[slot], 0, 3)
+
+
+func next_part_cost(car_i: int, part_i: int) -> int:
+	var level := _part(car_i, part_i)
+	if level >= PART_COST.size():
+		return -1
+	return PART_COST[level]
+
+
+func buy_car(index: int) -> bool:
+	if index < 0 or index >= PRESETS.size():
+		return false
+	if owns_car(index):
+		set_preset(index)
+		return true
+	var cost := CAR_COST[index]
+	if money < cost:
+		return false
+	money -= cost
+	owned[index] = true
+	set_preset(index)
+	save_car()
+	return true
+
+
+func buy_part(car_i: int, part_i: int) -> bool:
+	if not owns_car(car_i):
+		return false
+	var cost := next_part_cost(car_i, part_i)
+	if cost < 0 or money < cost:
+		return false
+	money -= cost
+	var slot := car_i * 4 + part_i
+	part_levels[slot] = _part(car_i, part_i) + 1
+	save_car()
+	return true
+
+
+func add_money(amount: int) -> void:
+	money = maxi(0, money + amount)
+	save_car()
+
+
+func place_bet(amount: int) -> bool:
+	if amount < 0 or amount > money:
+		return false
+	money -= amount
+	pending_bet = amount
+	save_car()
+	return true
+
+
+func settle_race(place: int) -> void:
+	var prize := 0
+	if place == 1:
+		prize = 3500
+	elif place == 2:
+		prize = 1800
+	elif place == 3:
+		prize = 900
+	money += prize
+	var lines: PackedStringArray = PackedStringArray()
+	if prize > 0:
+		lines.append("PRIZE  $%d" % prize)
+	if pending_bet > 0:
+		if place == 1:
+			var pay := pending_bet * BET_MULT
+			money += pay
+			lines.append("BET WON  $%d" % pay)
+		else:
+			lines.append("BET LOST  $%d" % pending_bet)
+		pending_bet = 0
+	lines.append("BALANCE  $%d" % money)
+	purse_note = "\n".join(lines)
+	save_car()
+
+
+func forfeit_bet() -> void:
+	if pending_bet <= 0:
+		return
+	pending_bet = 0
+	save_car()
 
 
 func set_preset(index: int) -> void:
@@ -363,6 +483,15 @@ func save_car() -> void:
 	cf.set_value("car", "preset", preset_index)
 	cf.set_value("car", "primary", primary.to_html(false))
 	cf.set_value("car", "accent", accent.to_html(false))
+	cf.set_value("car", "money", money)
+	var owned_bits: PackedStringArray = PackedStringArray()
+	for flag in owned:
+		owned_bits.append("1" if flag else "0")
+	cf.set_value("car", "owned", ",".join(owned_bits))
+	var part_bits: PackedStringArray = PackedStringArray()
+	for level in part_levels:
+		part_bits.append(str(level))
+	cf.set_value("car", "parts", ",".join(part_bits))
 	cf.save("user://car.cfg")
 
 
@@ -373,3 +502,16 @@ func _load_car() -> void:
 	preset_index = int(cf.get_value("car", "preset", 0))
 	primary = Color.html(str(cf.get_value("car", "primary", "14e6ff")))
 	accent = Color.html(str(cf.get_value("car", "accent", "ff8a1e")))
+	money = maxi(0, int(cf.get_value("car", "money", money)))
+	if cf.has_section_key("car", "owned"):
+		var bits := str(cf.get_value("car", "owned", "1,0,0,0")).split(",", false)
+		for i in owned.size():
+			owned[i] = i < bits.size() and bits[i] == "1"
+	if cf.has_section_key("car", "parts"):
+		var bits := str(cf.get_value("car", "parts", "")).split(",", false)
+		for i in part_levels.size():
+			part_levels[i] = int(bits[i]) if i < bits.size() else 0
+	preset_index = clampi(preset_index, 0, PRESETS.size() - 1)
+	if not owns_car(preset_index):
+		owned[preset_index] = true
+	owned[0] = true

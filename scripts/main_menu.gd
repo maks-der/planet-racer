@@ -1,5 +1,8 @@
 extends Control
 
+var _buttons: Array[Button] = []
+var _pick := 0
+
 
 func _ready() -> void:
 	theme = UiStyle.theme()
@@ -49,22 +52,32 @@ func _ready() -> void:
 	)
 	column.add_child(new_game)
 
-	var garage := UiStyle.button("GARAGE", 280)
-	garage.pressed.connect(_open_garage)
-	column.add_child(garage)
-
 	var quit := UiStyle.button("QUIT", 280)
 	quit.pressed.connect(func() -> void: get_tree().quit())
 	column.add_child(quit)
+	_buttons = [new_game, quit]
+	UiStyle.trap_focus(_buttons)
+	_focus(0)
 
 	var hint := Label.new()
-	hint.text = "WASD drive    Shift boost    Space jump    Ctrl or C drift    V camera    Tab map"
+	hint.text = "Arrows choose    Enter or Space confirm    WASD drive    Shift boost    V camera"
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	hint.position = Vector2(90, -48)
 	hint.add_theme_color_override("font_color", Color(0.75, 0.84, 0.9, 0.8))
 	add_child(hint)
 
 
-func _open_garage() -> void:
-	var garage := GarageUi.new()
-	add_child(garage)
+func _unhandled_input(event: InputEvent) -> void:
+	if _buttons.is_empty() or not event.is_pressed() or event.is_echo():
+		return
+	if event.is_action_pressed("ui_up") or event.is_action_pressed("ui_left"):
+		_focus(_pick - 1)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("ui_down") or event.is_action_pressed("ui_right"):
+		_focus(_pick + 1)
+		get_viewport().set_input_as_handled()
+
+
+func _focus(index: int) -> void:
+	_pick = posmod(index, _buttons.size())
+	_buttons[_pick].grab_focus()

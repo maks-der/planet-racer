@@ -1,7 +1,8 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Shader" path="res://shaders/grass_planet.gdshader" id="1_globe"]
 [ext_resource type="Shader" path="res://shaders/grass_atmosphere.gdshader" id="2_air"]
+[ext_resource type="Shader" path="res://shaders/planet_ring.gdshader" id="3_ring"]
 
 [sub_resource type="ShaderMaterial" id="mat_globe"]
 shader = ExtResource("1_globe")
@@ -16,10 +17,22 @@ rings = 48
 shader = ExtResource("2_air")
 
 [sub_resource type="SphereMesh" id="mesh_air"]
-radius = 6.95
-height = 13.9
+radius = 6.33
+height = 12.66
 radial_segments = 64
 rings = 32
+
+[sub_resource type="ShaderMaterial" id="mat_ring"]
+shader = ExtResource("3_ring")
+
+[sub_resource type="CylinderMesh" id="mesh_ring"]
+top_radius = 11.2
+bottom_radius = 11.2
+height = 0.06
+radial_segments = 96
+rings = 1
+cap_top = true
+cap_bottom = true
 
 [node name="GrassPlanet" type="Node3D"]
 
@@ -30,3 +43,8 @@ surface_material_override/0 = SubResource("mat_globe")
 [node name="Air" type="MeshInstance3D" parent="."]
 mesh = SubResource("mesh_air")
 surface_material_override/0 = SubResource("mat_air")
+
+[node name="Ring" type="MeshInstance3D" parent="."]
+rotation_degrees = Vector3(68, 24, 12)
+mesh = SubResource("mesh_ring")
+surface_material_override/0 = SubResource("mat_ring")

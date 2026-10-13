@@ -27,6 +27,7 @@ var _gate_root: Node3D
 var _race_line: MeshInstance3D
 var _env: WorldEnvironment
 var _sun: DirectionalLight3D
+var _twin_sun: DirectionalLight3D
 var arrival
 var wasteland
 var camera_mode := 0
@@ -36,6 +37,8 @@ var port_position := Vector3.ZERO
 var port_yaw := 0.0
 var near_port := false
 var fix_stations: Array[Vector3] = []
+var garages: Array[Vector3] = []
+var near_garage := false
 var _sky_mat: ShaderMaterial
 var _storm_fx: GPUParticles3D
 var _wind_fx: GPUParticles3D
@@ -84,6 +87,7 @@ func _ready() -> void:
 	arrival.set_progress(0.06, "STARSHIP INBOUND")
 	for _warm in 8:
 		await get_tree().process_frame
+	TerrainField.apply_planet(GameState.planet)
 	terrain = TerrainField.new()
 	terrain.planet = GameState.planet
 	terrain.begin(GameState.world_seed)
@@ -126,6 +130,7 @@ func _ready() -> void:
 	add_child(_gate_root)
 	_spawn_beacons()
 	_spawn_fix_stations()
+	_spawn_garages()
 	_build_spaceport()
 	_spawn_player()
 	_spawn_ambient()
@@ -140,11 +145,23 @@ func _ready() -> void:
 	_sun.directional_shadow_fade_start = 0.78
 	_sun.visible = false
 	add_child(_sun)
+	_twin_sun = DirectionalLight3D.new()
+	_twin_sun.rotation_degrees = Vector3(-16.0, 40.0, 0.0)
+	_twin_sun.light_color = Color(1.0, 0.9, 0.7)
+	_twin_sun.light_energy = 0.78
+	_twin_sun.shadow_enabled = false
+	_twin_sun.visible = false
+	add_child(_twin_sun)
 	cam = Camera3D.new()
 	cam.current = false
 	cam.fov = 70.0
 	cam.near = 0.08
-	cam.far = 4800.0
+	if GameState.planet == "grass":
+		cam.far = 18000.0
+	elif GameState.planet == "ice":
+		cam.far = 9000.0
+	else:
+		cam.far = 4800.0
 	add_child(cam)
 	cam.global_position = player.global_position + Vector3(0, 6, 12)
 	player.controls_enabled = false
@@ -156,13 +173,22 @@ func _ready() -> void:
 			_sun.light_color = Color(0.62, 0.75, 0.98)
 			_sun.light_energy = 0.48
 			_sun.rotation_degrees = Vector3(-14, 148, 0)
+			_twin_sun.visible = false
 		elif GameState.planet == "grass":
 			_env.environment = _grass_environment()
 			_sun.light_color = Color(1.0, 0.91, 0.74)
 			_sun.light_energy = 1.4
 			_sun.rotation_degrees = Vector3(-36.0, 64.0, 0.0)
+			_twin_sun.visible = false
 		else:
 			_env.environment = _desert_environment()
+			_sun.light_color = Color(1.0, 0.92, 0.74)
+			_sun.light_energy = 0.78
+			_sun.rotation_degrees = Vector3(-18.0, 28.0, 0.0)
+			_twin_sun.light_color = Color(1.0, 0.9, 0.7)
+			_twin_sun.light_energy = 0.78
+			_twin_sun.rotation_degrees = Vector3(-16.0, 40.0, 0.0)
+			_twin_sun.visible = true
 		_sun.visible = true
 		cam.current = true
 	)
@@ -283,6 +309,7 @@ func stop_race() -> void:
 
 
 func return_to_roam() -> void:
+	GameState.forfeit_bet()
 	_clear_finish_hold()
 	race.active = false
 	race.started = false
@@ -321,8 +348,10 @@ func _physics_process(dt: float) -> void:
 	else:
 		_clear_race_line()
 		_update_prompt()
-		if near_race >= 0 and Input.is_action_just_pressed("interact") and not player.airborne:
-			start_race(near_race)
+		if near_race >= 0 and Input.is_action_just_pressed("interact") and not player.airborne and hud:
+			hud.open_bet(near_race)
+		elif near_garage and Input.is_action_just_pressed("interact") and not player.airborne and hud:
+			hud.open_garage()
 		elif near_port and Input.is_action_just_pressed("interact") and not player.airborne and hud:
 			hud.open_port()
 		_remember_safe(dt)
@@ -450,6 +479,7 @@ func _grass_environment() -> Environment:
 	sky_mat.set_shader_parameter("meadow", 0.0)
 	sky_mat.set_shader_parameter("sunset", 0.0)
 	sky_mat.set_shader_parameter("fluffy", 1.0)
+	sky_mat.set_shader_parameter("rings", 1.0)
 	sky_mat.set_shader_parameter("moon_dir", Vector3(-0.42, 0.55, -0.72))
 	var blow := terrain.wind_dir
 	sky_mat.set_shader_parameter("wind_dir", Vector2(blow.x, blow.z))
@@ -574,7 +604,7 @@ func _spawn_player() -> void:
 	player = CarScene.instantiate()
 	player.world = self
 	player.display_name = "PILOT"
-	player.stats = GameState.preset().duplicate()
+	player.stats = GameState.tuned_stats()
 	player.primary = GameState.primary
 	player.accent = GameState.accent
 	player.ai = false
@@ -716,6 +746,90 @@ func _spawn_fix_stations() -> void:
 			_build_fix_arch(root, pos, dir, side)
 			fix_stations.append(pos)
 			placed.append(flat)
+
+
+func _spawn_garages() -> void:
+	var root := Node3D.new()
+	root.name = "Garages"
+	add_child(root)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = GameState.world_seed + 419
+	var reach := TerrainField.HALF * 0.62
+	var tries := 0
+	while garages.size() < 2 and tries < 90:
+		tries += 1
+		var spot := Vector2(rng.randf_range(-reach, reach), rng.randf_range(-reach, reach))
+		if terrain.slope_at(spot.x, spot.y) > 0.42:
+			continue
+		var road_d := roads.distance_to_road(spot.x, spot.y)
+		var road_far := 260.0 if tries > 40 else 150.0
+		if road_d < 18.0 or road_d > road_far:
+			continue
+		var blocked := spot.distance_to(Vector2(port_position.x, port_position.z)) < 220.0
+		if not blocked:
+			for beacon in beacon_positions:
+				if spot.distance_to(Vector2(beacon.x, beacon.z)) < 180.0:
+					blocked = true
+					break
+		if not blocked:
+			for station in fix_stations:
+				if spot.distance_to(Vector2(station.x, station.z)) < 150.0:
+					blocked = true
+					break
+		if not blocked:
+			for other in garages:
+				if spot.distance_to(Vector2(other.x, other.z)) < 700.0:
+					blocked = true
+					break
+		if blocked:
+			continue
+		var y := float(sample_surface(Vector3(spot.x, 0.0, spot.y)).height)
+		var pos := Vector3(spot.x, y, spot.y)
+		_build_garage(root, pos, rng.randf_range(-PI, PI))
+		garages.append(pos)
+
+
+func _build_garage(root: Node3D, pos: Vector3, yaw: float) -> void:
+	var holder := Node3D.new()
+	holder.position = pos
+	holder.rotation.y = yaw
+	root.add_child(holder)
+	var wall := Color(0.62, 0.42, 0.26)
+	var roof := Color(0.78, 0.48, 0.2)
+	var trim := Color(0.95, 0.78, 0.42)
+	if GameState.planet == "ice":
+		wall = Color(0.46, 0.58, 0.7)
+		roof = Color(0.22, 0.32, 0.46)
+		trim = Color(0.7, 0.9, 1.0)
+	elif GameState.planet == "grass":
+		wall = Color(0.28, 0.24, 0.18)
+		roof = Color(0.16, 0.28, 0.14)
+		trim = Color(0.72, 0.58, 0.28)
+	var wall_mat := _fix_mat(wall)
+	var roof_mat := _fix_mat(roof)
+	var pad := BoxMesh.new()
+	pad.size = Vector3(14.0, 0.16, 16.0)
+	_fix_part(holder, pad, _fix_mat(Color(0.18, 0.16, 0.13)), Vector3(0.0, 0.08, 0.0))
+	var side_wall := BoxMesh.new()
+	side_wall.size = Vector3(0.45, 4.2, 12.0)
+	_fix_part(holder, side_wall, wall_mat, Vector3(-5.2, 2.1, -1.0))
+	_fix_part(holder, side_wall, wall_mat, Vector3(5.2, 2.1, -1.0))
+	var back := BoxMesh.new()
+	back.size = Vector3(10.8, 4.2, 0.45)
+	_fix_part(holder, back, wall_mat, Vector3(0.0, 2.1, -6.8))
+	var lid := BoxMesh.new()
+	lid.size = Vector3(12.4, 0.28, 14.5)
+	_fix_part(holder, lid, roof_mat, Vector3(0.0, 4.4, -1.2))
+	var beam := BoxMesh.new()
+	beam.size = Vector3(10.4, 0.35, 0.4)
+	_fix_part(holder, beam, _fix_mat(trim), Vector3(0.0, 3.6, 4.6))
+	var board := Label3D.new()
+	board.text = "GARAGE"
+	board.font_size = 54
+	board.modulate = trim
+	board.position = Vector3(0.0, 5.15, 4.4)
+	board.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	holder.add_child(board)
 
 
 func _build_fix_arch(root: Node3D, pos: Vector3, dir: Vector3, side: Vector3) -> void:
@@ -1016,6 +1130,7 @@ func _grid_slots(def: Dictionary) -> Array[Vector3]:
 func _update_prompt() -> void:
 	near_race = -1
 	near_port = false
+	near_garage = false
 	var best := 20.0
 	var flat := Vector2(player.global_position.x, player.global_position.z)
 	for i in beacon_positions.size():
@@ -1024,7 +1139,14 @@ func _update_prompt() -> void:
 		if d < best:
 			best = d
 			near_race = i
-	if near_race < 0 and flat.distance_to(Vector2(port_position.x, port_position.z)) < 22.0:
+	if near_race < 0:
+		var garage_best := 18.0
+		for bay in garages:
+			var gap := flat.distance_to(Vector2(bay.x, bay.z))
+			if gap < garage_best and absf(player.global_position.y - bay.y) < 8.0:
+				garage_best = gap
+				near_garage = true
+	if near_race < 0 and not near_garage and flat.distance_to(Vector2(port_position.x, port_position.z)) < 22.0:
 		if absf(player.global_position.y - port_position.y) < 8.0:
 			near_port = true
 
@@ -1236,8 +1358,11 @@ func _update_storm(dt: float) -> void:
 		if storm_level > 0.62 and _storm_flash <= 0.0 and randf() < dt * 0.35:
 			_storm_flash = 0.08
 		var flash := 1.0 if _storm_flash > 0.0 else 0.0
-		_sun.light_energy = lerpf(1.55, 0.32, storm_level) + flash * 1.8
+		_sun.light_energy = lerpf(0.78, 0.32, storm_level) + flash * 1.8
 		_sun.light_color = Color(1.0, 0.92, 0.74).lerp(Color(0.85, 0.62, 0.4), storm_level)
+		if _twin_sun and _twin_sun.visible:
+			_twin_sun.light_energy = lerpf(0.78, 0.2, storm_level)
+			_twin_sun.light_color = Color(1.0, 0.9, 0.7).lerp(Color(0.8, 0.58, 0.36), storm_level)
 	if _storm_fx:
 		_storm_fx.emitting = storm_level > 0.08
 		_storm_fx.amount_ratio = clampf(storm_level, 0.0, 1.0)
@@ -1261,12 +1386,12 @@ func _update_camera(dt: float) -> void:
 	var lag := 3.4
 	match camera_mode:
 		1:
-			dist = lerpf(13.5, 18.5, clampf(speed / HoverCar.SPEED_LIMIT, 0.0, 1.0))
-			height = lerpf(5.2, 8.2, clampf(speed / HoverCar.SPEED_LIMIT, 0.0, 1.0))
+			dist = lerpf(11.0, 13.5, clampf(speed / HoverCar.SPEED_LIMIT, 0.0, 1.0))
+			height = lerpf(4.6, 6.2, clampf(speed / HoverCar.SPEED_LIMIT, 0.0, 1.0))
 			look_ahead = 6.5
 			look_up = 1.0
-			target_fov = 64.0 + clampf(speed / HoverCar.SPEED_LIMIT, 0.0, 1.0) * 8.0
-			lag = 2.6
+			target_fov = 64.0 + clampf(speed / HoverCar.SPEED_LIMIT, 0.0, 1.0) * 4.0
+			lag = 6.0
 		2:
 			var seat := player.global_transform * Transform3D(Basis.IDENTITY, Vector3(0.0, 0.9, -0.7))
 			var blend_hood := 1.0 if _snap_camera else 1.0 - exp(-14.0 * dt)
@@ -1283,14 +1408,15 @@ func _update_camera(dt: float) -> void:
 			target_fov = 86.0
 			lag = 9.0
 		_:
-			dist = lerpf(7.4, 10.8, clampf(speed / HoverCar.SPEED_LIMIT, 0.0, 1.0))
-			height = lerpf(2.9, 4.2, clampf(speed / HoverCar.SPEED_LIMIT, 0.0, 1.0))
+			dist = lerpf(6.6, 8.2, clampf(speed / HoverCar.SPEED_LIMIT, 0.0, 1.0))
+			height = lerpf(2.7, 3.3, clampf(speed / HoverCar.SPEED_LIMIT, 0.0, 1.0))
 			if player.airborne:
-				dist += 1.3
-				height += 0.8
-			target_fov = 70.0 + clampf(speed / HoverCar.SPEED_LIMIT, 0.0, 1.0) * 14.0
+				dist += 0.35
+				height += 0.35
+			target_fov = 70.0 + clampf(speed / HoverCar.SPEED_LIMIT, 0.0, 1.0) * 6.0
 			if player.boosting:
-				target_fov += 5.0
+				target_fov += 2.0
+			lag = 9.5
 	var look := player.global_position + Vector3.UP * look_up - back * look_ahead
 	var desired := player.global_position + back * dist + Vector3.UP * height
 	if overview:
@@ -1319,9 +1445,9 @@ func _apply_camera_fx() -> void:
 		return
 	var heal := clampf(player.fix_flash / 1.8, 0.0, 1.0)
 	if heal > 0.02:
-		var ease := heal * heal
-		cam.global_position += cam.global_transform.basis.y * ease * 0.28
-		cam.fov = maxf(cam.fov - ease * 4.5, 42.0)
+		var fade := heal * heal
+		cam.global_position += cam.global_transform.basis.y * fade * 0.28
+		cam.fov = maxf(cam.fov - fade * 4.5, 42.0)
 
 
 func _run_smoke() -> void:

@@ -12,7 +12,7 @@ void vertex() {
 void fragment() {
 	float ndl = dot(normalize(world_normal), normalize(light_dir));
 	float night = smoothstep(0.35, -0.55, ndl);
-	float fres = pow(1.0 - clamp(abs(dot(NORMAL, VIEW)), 0.0, 1.0), 1.65);
+	float fres = pow(1.0 - clamp(abs(dot(NORMAL, VIEW)), 0.0, 1.0), 3.0);
 	float across = UV.x * 16.0 + TIME * 0.12;
 	float wave = sin(UV.y * 10.0 + TIME * 0.35) * 1.6;
 	float curtain = sin(across + wave);

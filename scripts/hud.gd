@@ -44,6 +44,17 @@ var _port_open := false
 var _port_ice: Button
 var _port_grass: Button
 var _map_open := false
+var cash_label: Label
+var _bet_panel: Control
+var _bet_open := false
+var _bet_index := -1
+var _bet_note: Label
+var _menu_buttons: Array[Button] = []
+var _menu_i := 0
+var _pause_buttons: Array[Button] = []
+var _result_buttons: Array[Button] = []
+var _port_buttons: Array[Button] = []
+var _bet_buttons: Array[Button] = []
 var map_texture: ImageTexture
 var speed_fx: ColorRect
 var _speed_mat: ShaderMaterial
@@ -69,6 +80,7 @@ func bind(host) -> void:
 	_build_results(root)
 	_build_missions(root)
 	_build_port(root)
+	_build_bet(root)
 
 
 func _process(_dt: float) -> void:
@@ -88,9 +100,14 @@ func _process(_dt: float) -> void:
 		view_time -= _dt
 		if view_time <= 0.0 and view_label:
 			view_label.visible = false
+	if _garage == null and not _menu_buttons.is_empty():
+		if Input.is_action_just_pressed("ui_up") or Input.is_action_just_pressed("ui_left"):
+			_steer_menu(-1)
+		elif Input.is_action_just_pressed("ui_down") or Input.is_action_just_pressed("ui_right"):
+			_steer_menu(1)
 	if Input.is_action_just_pressed("pause"):
 		_on_escape()
-	elif _guide_pressed() and _garage == null and not _paused and not results_panel.visible:
+	elif _guide_pressed() and _garage == null and not _paused and not _bet_open and not _port_open and not results_panel.visible:
 		_toggle_guide()
 
 
@@ -125,6 +142,8 @@ func dismiss_menus() -> void:
 func hide_results() -> void:
 	if results_panel:
 		results_panel.visible = false
+	if not _paused and not _bet_open and not _port_open:
+		_clear_menu()
 
 
 func show_results() -> void:
@@ -146,7 +165,11 @@ func show_results() -> void:
 		lines.append("")
 		lines.append("A message arrives.")
 		lines.append("You are invited to the races on the next planet. Drive to the space port.")
+	if GameState.purse_note != "":
+		lines.append("")
+		lines.append(GameState.purse_note)
 	lines.append("")
+	_arm_menu(_result_buttons)
 	for i in world.race.order.size():
 		var car: HoverCar = world.race.order[i]
 		var time := Util.format_time(car.finish_time) if car.finished else "RUNNING"
@@ -182,6 +205,8 @@ func _refresh() -> void:
 		else:
 			hull_label.visible = false
 	seed_label.text = "%s   SEED %06d" % [GameState.planet_title(), GameState.world_seed]
+	if cash_label:
+		cash_label.text = "FUNDS  $%d" % GameState.money
 	var race = world.race
 	if race.active:
 		prompt_label.text = ""
@@ -222,7 +247,10 @@ func _refresh() -> void:
 		race_label.text = "FREE ROAM"
 		if world.near_race >= 0:
 			var def: Dictionary = world.roads.races[world.near_race]
-			prompt_label.text = "F  —  START  %s\n%s" % [str(def.name).to_upper(), def.blurb]
+			prompt_label.text = "F  —  RACE  %s\n%s" % [str(def.name).to_upper(), def.blurb]
+			race_meta.visible = false
+		elif world.near_garage:
+			prompt_label.text = "F  —  GARAGE"
 			race_meta.visible = false
 		elif world.near_port:
 			prompt_label.text = "F  —  SPACE PORT"
@@ -244,14 +272,16 @@ func _refresh() -> void:
 
 
 func _on_escape() -> void:
+	if _bet_open:
+		_close_bet()
+		return
 	if _port_open:
 		close_port()
 		return
 	if _garage != null:
-		_garage.queue_free()
-		_garage = null
-		if not _paused:
-			get_tree().paused = false
+		var ui := _garage
+		ui.closed.emit()
+		ui.queue_free()
 		return
 	if _map_open:
 		_set_guide(false)
@@ -268,6 +298,10 @@ func _set_paused(value: bool) -> void:
 	_paused = value
 	pause_panel.visible = value
 	get_tree().paused = value
+	if value:
+		_arm_menu(_pause_buttons)
+	elif not _bet_open and not _port_open and not results_panel.visible:
+		_clear_menu()
 
 
 func _build_drive_ui(root: Control) -> void:
@@ -354,6 +388,11 @@ func _build_drive_ui(root: Control) -> void:
 	seed_label.add_theme_font_size_override("font_size", 14)
 	seed_label.add_theme_color_override("font_color", Color(0.75, 0.9, 1, 0.85))
 	root.add_child(seed_label)
+	cash_label = Label.new()
+	cash_label.position = Vector2(28, 42)
+	cash_label.add_theme_font_size_override("font_size", 16)
+	cash_label.add_theme_color_override("font_color", Color(1.0, 0.82, 0.42))
+	root.add_child(cash_label)
 
 	race_panel = PanelContainer.new()
 	race_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -570,9 +609,6 @@ func _build_pause(root: Control) -> void:
 	var resume := UiStyle.button("RESUME")
 	resume.pressed.connect(func() -> void: _set_paused(false))
 	box.add_child(resume)
-	var garage := UiStyle.button("GARAGE")
-	garage.pressed.connect(_open_garage)
-	box.add_child(garage)
 	var missions := UiStyle.button("MAP")
 	missions.pressed.connect(func() -> void:
 		_set_paused(false)
@@ -589,6 +625,8 @@ func _build_pause(root: Control) -> void:
 	var menu := UiStyle.button("MAIN MENU")
 	menu.pressed.connect(_to_menu)
 	box.add_child(menu)
+	_pause_buttons = [resume, missions, retire, menu]
+	UiStyle.trap_focus(_pause_buttons)
 
 
 func _guide_pressed() -> bool:
@@ -688,6 +726,8 @@ func _build_results(root: Control) -> void:
 	var menu := UiStyle.button("MAIN MENU", 440)
 	menu.pressed.connect(_to_menu)
 	box.add_child(menu)
+	_result_buttons = [cont, retry, menu]
+	UiStyle.trap_focus(_result_buttons)
 
 
 func _build_missions(root: Control) -> void:
@@ -816,6 +856,8 @@ func _build_port(root: Control) -> void:
 	var close := UiStyle.button("CLOSE", 360)
 	close.pressed.connect(close_port)
 	box.add_child(close)
+	_port_buttons = [desert, _port_ice, _port_grass, close]
+	UiStyle.trap_focus(_port_buttons)
 
 
 func open_port() -> void:
@@ -830,12 +872,15 @@ func open_port() -> void:
 		_port_grass.disabled = not GameState.grass_unlocked
 		_port_grass.text = "EMERALD STEPPE" if GameState.grass_unlocked else "EMERALD STEPPE  —  4 ICE GOLDS"
 	get_tree().paused = true
+	_arm_menu(_port_buttons)
 
 
 func close_port() -> void:
 	_port_open = false
 	if _port_panel:
 		_port_panel.visible = false
+	if not _paused and not _bet_open and not results_panel.visible:
+		_clear_menu()
 	if not _paused:
 		get_tree().paused = false
 
@@ -849,23 +894,148 @@ func _overlay(root: Control) -> Control:
 	return dim
 
 
-func _open_garage() -> void:
+func open_garage() -> void:
 	if _garage != null:
 		return
+	_clear_menu()
 	_garage = GarageUi.new()
 	_garage.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(_garage)
+	get_tree().paused = true
 	_garage.closed.connect(func() -> void:
 		_garage = null
-		if world.player:
-			world.player.stats = GameState.preset().duplicate()
-			world.player.primary = GameState.primary
-			world.player.accent = GameState.accent
-			if world.player._body_mat:
-				var body := Color(0.05, 0.055, 0.07).lerp(GameState.primary, 0.34)
-				world.player._body_mat.set_shader_parameter("body_color", body)
-				world.player._body_mat.set_shader_parameter("accent_color", GameState.accent)
+		_apply_owned_car()
+		if not _paused and not _bet_open and not _port_open:
+			get_tree().paused = false
 	)
+
+
+func open_bet(index: int) -> void:
+	if _bet_panel == null or _bet_open or world == null:
+		return
+	_bet_index = index
+	_bet_open = true
+	_bet_panel.visible = true
+	if _bet_note:
+		var def: Dictionary = world.roads.races[index]
+		_bet_note.text = "%s\nBet on yourself. Win the race to collect 3×. Any other finish loses the stake.\nFunds $%d" % [str(def.name).to_upper(), GameState.money]
+	for i in _bet_buttons.size():
+		if i == 0 or i > GameState.BET_AMOUNTS.size():
+			_bet_buttons[i].disabled = false
+			continue
+		var amount: int = GameState.BET_AMOUNTS[i - 1]
+		_bet_buttons[i].disabled = GameState.money < amount
+		_bet_buttons[i].text = "BET  $%d" % amount
+	get_tree().paused = true
+	_arm_menu(_bet_buttons)
+
+
+func _close_bet() -> void:
+	_bet_open = false
+	_bet_index = -1
+	if _bet_panel:
+		_bet_panel.visible = false
+	if not _paused and not _port_open and not results_panel.visible:
+		_clear_menu()
+	if not _paused and not _port_open:
+		get_tree().paused = false
+
+
+func _confirm_bet(amount: int) -> void:
+	if world == null or _bet_index < 0:
+		return
+	if not GameState.place_bet(amount):
+		return
+	var index := _bet_index
+	_bet_open = false
+	_bet_index = -1
+	if _bet_panel:
+		_bet_panel.visible = false
+	_clear_menu()
+	get_tree().paused = false
+	world.start_race(index)
+
+
+func _apply_owned_car() -> void:
+	if world == null or world.player == null:
+		return
+	world.player.stats = GameState.tuned_stats()
+	world.player.primary = GameState.primary
+	world.player.accent = GameState.accent
+	world.player.apply_livery()
+
+
+func _arm_menu(buttons: Array[Button]) -> void:
+	_menu_buttons = buttons
+	_menu_i = 0
+	_focus_menu_button()
+
+
+func _clear_menu() -> void:
+	_menu_buttons = []
+	_menu_i = 0
+
+
+func _focus_menu_button() -> void:
+	if _menu_buttons.is_empty():
+		return
+	var guard := 0
+	while guard < _menu_buttons.size():
+		var btn := _menu_buttons[_menu_i]
+		if is_instance_valid(btn) and btn.visible and not btn.disabled:
+			btn.grab_focus()
+			return
+		_menu_i = posmod(_menu_i + 1, _menu_buttons.size())
+		guard += 1
+
+
+func _steer_menu(dir: int) -> void:
+	if _menu_buttons.is_empty():
+		return
+	_menu_i = posmod(_menu_i + dir, _menu_buttons.size())
+	var guard := 0
+	while guard < _menu_buttons.size():
+		var btn := _menu_buttons[_menu_i]
+		if is_instance_valid(btn) and btn.visible and not btn.disabled:
+			btn.grab_focus()
+			return
+		_menu_i = posmod(_menu_i + dir, _menu_buttons.size())
+		guard += 1
+
+
+func _build_bet(root: Control) -> void:
+	_bet_panel = _overlay(root)
+	_bet_panel.visible = false
+	var box := VBoxContainer.new()
+	box.set_anchors_preset(Control.PRESET_CENTER)
+	box.position = Vector2(-210, -250)
+	box.custom_minimum_size = Vector2(420, 500)
+	_bet_panel.add_child(box)
+	var title := Label.new()
+	title.text = "PLACE A BET"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 28)
+	box.add_child(title)
+	_bet_note = Label.new()
+	_bet_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_bet_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_bet_note.custom_minimum_size = Vector2(400, 72)
+	box.add_child(_bet_note)
+	var skip := UiStyle.button("NO BET", 400)
+	skip.pressed.connect(func() -> void: _confirm_bet(0))
+	box.add_child(skip)
+	_bet_buttons.append(skip)
+	for amount in GameState.BET_AMOUNTS:
+		var stake: int = amount
+		var bet := UiStyle.button("BET  $%d" % stake, 400)
+		bet.pressed.connect(func() -> void: _confirm_bet(stake))
+		box.add_child(bet)
+		_bet_buttons.append(bet)
+	var cancel := UiStyle.button("CANCEL", 400)
+	cancel.pressed.connect(_close_bet)
+	box.add_child(cancel)
+	_bet_buttons.append(cancel)
+	UiStyle.trap_focus(_bet_buttons)
 
 
 func _to_menu() -> void:

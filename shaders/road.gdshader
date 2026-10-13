@@ -34,12 +34,12 @@ void fragment() {
 		ROUGHNESS = mix(0.72, 0.46, crown);
 		SPECULAR = 0.32;
 	} else if (meadow > 0.5) {
-		vec3 verge = vec3(0.34, 0.52, 0.16);
-		vec3 worn = vec3(0.46, 0.4, 0.22);
-		vec3 rut_grass = vec3(0.28, 0.24, 0.12);
+		vec3 verge = vec3(0.15, 0.12, 0.07);
+		vec3 worn = vec3(0.22, 0.16, 0.09);
+		vec3 rut_grass = vec3(0.1, 0.07, 0.04);
 		albedo = mix(verge, worn, crown);
 		albedo = mix(albedo, rut_grass, ruts * 0.7);
-		albedo *= 0.94 + grain * 0.08;
+		albedo *= 0.78 + grain * 0.06;
 		ROUGHNESS = 0.94;
 		SPECULAR = 0.04;
 	} else {

@@ -16,8 +16,8 @@ rings = 32
 shader = ExtResource("2_air")
 
 [sub_resource type="SphereMesh" id="mesh_air"]
-radius = 6.85
-height = 13.7
+radius = 6.32
+height = 12.64
 radial_segments = 48
 rings = 24
 

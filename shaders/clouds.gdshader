@@ -9,6 +9,7 @@ uniform float cold = 0.0;
 uniform float meadow = 0.0;
 uniform float sunset = 0.0;
 uniform float fluffy = 0.0;
+uniform float rings = 0.0;
 uniform vec3 moon_dir = vec3(-0.42, 0.55, -0.72);
 uniform vec2 cloud_scroll = vec2(0.015, 0.006);
 uniform vec2 wind_dir = vec2(0.9, 0.25);
@@ -38,6 +39,36 @@ float fbm(vec2 p) {
 		a *= 0.5;
 	}
 	return v;
+}
+
+vec3 grass_ring(vec3 rd) {
+	vec3 axis = normalize(vec3(0.58, 0.24, 0.78));
+	vec3 origin = vec3(0.0, 1.0, 0.0);
+	float denom = dot(rd, axis);
+	float hit_ok = step(0.0012, abs(denom));
+	float travel = -dot(origin, axis) / (denom + (1.0 - hit_ok));
+	vec3 hit = origin + rd * max(travel, 0.0);
+	float rad = length(hit);
+	float inner = 1.38;
+	float outer = 2.55;
+	float u = clamp((rad - inner) / (outer - inner), 0.0, 1.0);
+	float annulus = smoothstep(inner - 0.02, inner + 0.05, rad);
+	annulus *= 1.0 - smoothstep(outer - 0.06, outer + 0.03, rad);
+	annulus *= step(0.02, travel) * hit_ok;
+	float gap = smoothstep(0.05, 0.012, abs(u - 0.57));
+	float inner_band = smoothstep(0.0, 0.16, u) * (1.0 - smoothstep(0.46, 0.56, u));
+	float outer_band = smoothstep(0.64, 0.74, u) * (1.0 - smoothstep(0.9, 1.0, u));
+	float belt = max(inner_band, outer_band * 0.62);
+	float spin = atan(hit.x, hit.z);
+	float clumps = fbm(vec2(spin * 1.6, u * 3.0));
+	float dust = fbm(hit.xz * 1.7 + vec2(u * 4.0, spin));
+	vec3 ice = vec3(0.86, 0.9, 0.78);
+	vec3 rock = vec3(0.42, 0.48, 0.36);
+	vec3 col = mix(rock, ice, clumps);
+	col = mix(col, col * 0.28, gap);
+	float fade = smoothstep(-0.03, 0.1, rd.y);
+	float far = 1.0 / (1.0 + travel * 0.22);
+	return col * annulus * belt * (0.45 + dust * 0.7) * fade * far;
 }
 
 void sky() {
@@ -168,9 +199,19 @@ void sky() {
 				corona_amt = 0.16;
 				disc_pow = 96.0;
 				disc_amt = 1.05;
+			} else {
+				corona_pow = 18.0;
+				corona_amt = 0.14;
+				disc_pow = 160.0;
+				disc_amt = 0.68;
 			}
 			col += corona * pow(sun_d, corona_pow) * corona_amt;
 			col += disc * pow(sun_d, disc_pow) * disc_amt;
+		}
+		if (LIGHT1_ENABLED && sunset < 0.5 && fluffy < 0.5) {
+			float twin_d = clamp(dot(EYEDIR, LIGHT1_DIRECTION), 0.0, 1.0);
+			col += vec3(1.0, 0.62, 0.28) * pow(twin_d, 18.0) * 0.14;
+			col += vec3(1.0, 0.82, 0.5) * pow(twin_d, 160.0) * 0.68;
 		}
 		if (sunset > 0.5 || fluffy > 0.5) {
 			vec3 mdir = normalize(moon_dir);
@@ -189,6 +230,9 @@ void sky() {
 			float moon_amt = sunset > 0.5 ? 1.7 : 0.4;
 			col += vec3(0.62, 0.7, 0.86) * pow(facing, 10.0) * moon_glow;
 			col += moon_col * phase * moon_amt;
+		}
+		if (rings > 0.5) {
+			col += grass_ring(EYEDIR);
 		}
 	}
 	COLOR = col;

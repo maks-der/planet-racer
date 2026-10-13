@@ -128,11 +128,27 @@ func _article_polygon(slot: int) -> PackedVector2Array:
 		stretch = 2.0
 	elif terrain.planet == "grass":
 		stretch = 4.0
-	var ang := TAU * float(slot) / 8.0 + _rng.randf_range(-0.22, 0.22)
+	var jitter := _rng.randf_range(-0.22, 0.22)
+	if terrain.planet == "grass":
+		jitter *= 0.28
+	elif terrain.planet == "ice":
+		jitter *= 0.35
+	var ang := TAU * float(slot) / 8.0 + jitter
 	var raw_x := lerpf(250.0, 390.0, float(slot) / 7.0) * _rng.randf_range(0.92, 1.06)
 	var half_x := raw_x * stretch
-	var half_z := half_x * _rng.randf_range(0.68, 0.9)
+	var ratio := _rng.randf_range(0.68, 0.9)
+	if terrain.planet == "grass":
+		ratio = lerpf(0.36, 0.50, (ratio - 0.68) / 0.22)
+	elif terrain.planet == "ice":
+		ratio = lerpf(0.42, 0.58, (ratio - 0.68) / 0.22)
+	var half_z := half_x * ratio
 	var limit := TerrainField.HALF * 0.76
+	if terrain.planet == "grass" or terrain.planet == "ice":
+		var cap_h := limit * (0.30 if terrain.planet == "grass" else 0.32)
+		if half_x > cap_h:
+			var fit_h := cap_h / half_x
+			half_x *= fit_h
+			half_z *= fit_h
 	var room := limit * 0.92
 	var extent := maxf(half_x, half_z)
 	if extent > room:
@@ -143,11 +159,17 @@ func _article_polygon(slot: int) -> PackedVector2Array:
 	_loop_scale.append(half_x / raw_x)
 	var ring_cap := maxf(0.0, limit - extent - 24.0)
 	var ring := minf(540.0 + _rng.randf_range(-40.0, 50.0), ring_cap)
+	if terrain.planet == "grass":
+		ring = maxf(0.0, limit - limit * 0.30 - 160.0)
+	elif terrain.planet == "ice":
+		ring = maxf(0.0, limit - limit * 0.32 - 120.0)
 	var center := Vector2(cos(ang), sin(ang)) * ring
 	var difficulty := lerpf(0.45, 7.0, float(slot) / 7.0)
 	var span := maxf(half_x, half_z) * 2.0
 	var apart := maxf(88.0, span * 0.07)
 	var max_disp := span * 0.16
+	if terrain.planet == "grass" or terrain.planet == "ice":
+		max_disp = span * 0.08
 	for attempt in 8:
 		var shaped := _shape_polygon(center, half_x, half_z, difficulty, apart, max_disp, attempt < 6)
 		if stretch > 1.01:
@@ -397,7 +419,12 @@ func _link_tracks() -> void:
 			if separated:
 				_union_parent(parent, ia, ib)
 			continue
-		if dist > 900.0:
+		var reach := 900.0
+		if terrain.planet == "grass":
+			reach = maxf(900.0, TerrainField.HALF * 0.45)
+		elif terrain.planet == "ice":
+			reach = maxf(900.0, TerrainField.HALF * 0.42)
+		if dist > reach:
 			continue
 		if not separated and (dist > 320.0 or added >= 12):
 			continue

@@ -18,8 +18,8 @@ shader = ExtResource("2_air")
 shader_parameter/light_dir = Vector3(0.96, 0.12, 0.22)
 
 [sub_resource type="SphereMesh" id="mesh_air"]
-radius = 7.15
-height = 14.3
+radius = 6.35
+height = 12.7
 radial_segments = 64
 rings = 32
 

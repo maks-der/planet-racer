@@ -28,12 +28,12 @@ func _ready() -> void:
 	var box := VBoxContainer.new()
 	panel.add_child(box)
 	_log = Label.new()
-	_log.text = "planet desert | ice | grass\nreward <1-8> gold | silver | bronze | none\nfix"
+	_log.text = "planet desert | ice | grass\nreward <1-8> gold | silver | bronze | none\nfix\nmoney 1000"
 	_log.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_log.add_theme_font_size_override("font_size", 14)
 	box.add_child(_log)
 	_line = LineEdit.new()
-	_line.placeholder_text = "planet grass | reward 1 gold | fix"
+	_line.placeholder_text = "planet grass | reward 1 gold | fix | money 1000"
 	_line.text_submitted.connect(_submit)
 	box.add_child(_line)
 
@@ -90,7 +90,10 @@ func _submit(text: String) -> void:
 	if parts.size() >= 1 and parts[0] == "fix":
 		_fix_car()
 		return
-	_log.text = "planet desert | ice | grass\nreward <1-8> gold | silver | bronze | none\nfix"
+	if parts.size() >= 1 and parts[0] == "money":
+		_add_money(parts)
+		return
+	_log.text = "planet desert | ice | grass\nreward <1-8> gold | silver | bronze | none\nfix\nmoney 1000"
 
 
 func _reward(parts: PackedStringArray) -> void:
@@ -123,6 +126,21 @@ func _reward(parts: PackedStringArray) -> void:
 	if world.hud:
 		world.hud._refresh_medals()
 	_log.text = "%s is now %s." % [str(def.name), kind.to_upper()]
+
+
+func _add_money(parts: PackedStringArray) -> void:
+	if parts.size() < 2:
+		_log.text = "Funds $%d. Use money 1000 to add." % GameState.money
+		return
+	var raw := parts[1]
+	if raw == "add" and parts.size() >= 3:
+		raw = parts[2]
+	var amount := int(raw)
+	if amount == 0 and raw != "0":
+		_log.text = "Use money 1000 to add funds."
+		return
+	GameState.add_money(amount)
+	_log.text = "Funds $%d." % GameState.money
 
 
 func _fix_car() -> void:

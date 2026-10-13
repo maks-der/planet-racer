@@ -29,6 +29,26 @@ float fbm(vec2 p) {
 	return v;
 }
 
+vec3 moon_body(vec3 dir, vec3 axis, float ang_radius, float seed) {
+	vec3 center = normalize(axis);
+	float ang = acos(clamp(dot(dir, center), -1.0, 1.0));
+	float body = smoothstep(ang_radius, ang_radius * 0.9, ang);
+	vec3 pole = abs(center.y) > 0.92 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
+	vec3 side = normalize(cross(center, pole));
+	vec3 bit = cross(center, side);
+	vec2 uv = vec2(dot(dir, side), dot(dir, bit)) / ang_radius;
+	float maria = fbm(uv * 2.4 + vec2(seed, 1.4));
+	float seas = smoothstep(0.4, 0.76, maria);
+	float grain = noise(uv * 9.0 + seed);
+	float craters = smoothstep(0.8, 0.94, grain);
+	vec3 col = mix(vec3(0.84, 0.85, 0.8), vec3(0.45, 0.47, 0.49), seas);
+	col = mix(col, vec3(0.94, 0.95, 0.91), craters * 0.4);
+	float limb = clamp(1.0 - ang / ang_radius, 0.0, 1.0);
+	col *= 0.8 + 0.2 * sqrt(max(limb, 0.0));
+	float glow = smoothstep(ang_radius * 1.45, ang_radius, ang) * 0.045;
+	return col * body + vec3(0.78, 0.8, 0.76) * glow * (1.0 - body);
+}
+
 void sky() {
 	float h = EYEDIR.y;
 	vec3 col = vec3(0.004, 0.006, 0.012);
@@ -69,9 +89,10 @@ void sky() {
 	col += vec3(0.16, 0.42, 0.32) * high * haze * 0.16;
 
 	if (LIGHT0_ENABLED) {
-		float moon = clamp(dot(EYEDIR, LIGHT0_DIRECTION), 0.0, 1.0);
-		col += vec3(0.35, 0.48, 0.7) * pow(moon, 6.0) * 0.12;
-		col += vec3(0.82, 0.9, 1.0) * pow(moon, 220.0) * 1.1;
+		col += moon_body(dir, LIGHT0_DIRECTION, 0.064, 1.2);
+		vec3 moon_side = normalize(cross(LIGHT0_DIRECTION, vec3(0.0, 1.0, 0.0)));
+		vec3 moon2_dir = normalize(LIGHT0_DIRECTION * 0.72 + moon_side * 0.52 + vec3(0.0, 0.38, 0.0));
+		col += moon_body(dir, moon2_dir, 0.024, 7.4);
 	}
 	COLOR = col;
 }

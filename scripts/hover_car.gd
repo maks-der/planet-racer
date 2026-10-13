@@ -70,7 +70,7 @@ var _hull_smoke: GPUParticles3D
 func _ready() -> void:
 	process_priority = 8
 	if stats.is_empty():
-		stats = GameState.preset()
+		stats = GameState.tuned_stats()
 	_bind_visuals()
 	_setup_bolts()
 	_setup_audio()
@@ -452,7 +452,7 @@ func _drive(dt: float, input: Dictionary, surface: Dictionary, height: float, ho
 	drifting = bool(input.drift) and absf(forward_speed) > 12.0
 	var throttle := float(input.throttle)
 	var reverse_cap := minf(36.0, cap * 0.48)
-	var ramp := maxf(accel, float(stats.accel) * (1.05 if boosting else 0.35)) * 4.0
+	var ramp := maxf(accel, float(stats.accel) * (1.05 if boosting else 0.35)) * 2.0
 	if throttle > 0.05:
 		_thrust = move_toward(_thrust, throttle * accel, ramp * dt)
 		forward_speed += _thrust * dt
@@ -764,6 +764,19 @@ func _bolt_strip(pts: PackedVector3Array, width: float, color: Color) -> void:
 		_bolt_mesh.surface_add_vertex(p - side)
 		prev = p
 	_bolt_mesh.surface_end()
+
+
+func apply_livery() -> void:
+	var body := Color(0.05, 0.055, 0.07).lerp(primary, 0.34)
+	for mat in _body_mats:
+		mat.set_shader_parameter("body_color", body)
+		mat.set_shader_parameter("accent_color", accent)
+	for flame in _flames:
+		var flame_mat := flame.material_override as StandardMaterial3D
+		if flame_mat == null:
+			continue
+		flame_mat.albedo_color = Color(accent.r, accent.g, accent.b, 0.8)
+		flame_mat.emission = accent
 
 
 func _bind_visuals() -> void:

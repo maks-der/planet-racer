@@ -12,11 +12,11 @@ func _init() -> void:
 	ship_scale = Vector3(0.68, 0.68, 0.68)
 	approach_from = Vector3(-7.2, -0.85, 9.6)
 	approach_to = Vector3(-1.4, 0.45, 4.4)
-	cam_from = Vector3(-1.6, 3.4, 16.8)
-	cam_to = Vector3(0.8, 1.35, 12.2)
-	look_from = Vector3(2.8, -0.15, 0.2)
-	look_to = Vector3(0.2, 0.25, 2.2)
-	cam_fov = 46.0
+	cam_from = Vector3(-8.0, 8.6, 48.0)
+	cam_to = Vector3(-3.2, 5.4, 41.0)
+	look_from = Vector3(5.2, -1.6, -0.6)
+	look_to = Vector3(3.8, -0.8, 0.4)
+	cam_fov = 42.0
 	cam_roll = 6.0
 	title_color = Color(0.86, 0.95, 0.72)
 

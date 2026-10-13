@@ -1,11 +1,12 @@
 class_name TerrainField
 extends RefCounted
 
-const HALF := 1400.0
+const BASE_HALF := 1400.0
+static var HALF := 1400.0
 const RES := 561
 const BORDER := 150.0
 
-var cell: float = (HALF * 2.0) / float(RES - 1)
+var cell: float = (BASE_HALF * 2.0) / float(RES - 1)
 var heights := PackedFloat32Array()
 var road_mask := PackedFloat32Array()
 var min_h := 0.0
@@ -26,12 +27,22 @@ var _base_heights := PackedFloat32Array()
 var planet := "desert"
 
 
+static func apply_planet(planet_id: String) -> void:
+	if planet_id == "ice":
+		HALF = BASE_HALF * 2.0
+	elif planet_id == "grass":
+		HALF = BASE_HALF * 4.0
+	else:
+		HALF = BASE_HALF
+
+
 func generate(noise_seed: int) -> void:
 	begin(noise_seed)
 	write_rows(0, RES)
 
 
 func begin(noise_seed: int) -> void:
+	cell = (HALF * 2.0) / float(RES - 1)
 	_dune = _perlin(noise_seed, 0.0018, 4)
 	_detail = _perlin(noise_seed + 11, 0.014, 3)
 	_ridge = _noise(noise_seed + 23, 0.0016, 5)
@@ -138,9 +149,9 @@ func ground_color(x: float, z: float, h: float, normal: Vector3, road: float) ->
 
 func waste_height(x: float, z: float) -> float:
 	if planet == "ice":
-		return 6.0 + _sastrugi(x, z) * 0.65
+		return 150.0 + _sastrugi(x, z) * 0.4
 	if planet == "grass":
-		return _grass_base(x, z)
+		return _grass_base(x, z) * 0.25 + _grass_mountains(x, z)
 	var w := region_weights(x, z)
 	var n := _waste.get_noise_2d(x, z)
 	var ridge := pow(1.0 - absf(_waste_ridge.get_noise_2d(x, z)), 1.8)
@@ -284,10 +295,18 @@ func blend_border() -> void:
 			var wx := -HALF + float(x) * cell
 			var wz := -HALF + float(z) * cell
 			var edge := minf(minf(wx + HALF, HALF - wx), minf(wz + HALF, HALF - wz))
+			var idx := z * RES + x
+			if planet == "ice" or planet == "grass":
+				heights[idx] = maxf(heights[idx], _border_rim(wx, wz))
+				if edge >= 24.0:
+					continue
+				var lip := 1.0 - Util.smoothstep(0.0, 24.0, edge)
+				heights[idx] = lerpf(heights[idx], waste_height(wx, wz), lip)
+				road_mask[idx] *= 1.0 - lip
+				continue
 			var t := 1.0 - Util.smoothstep(0.0, BORDER, edge)
 			if t <= 0.0:
 				continue
-			var idx := z * RES + x
 			heights[idx] = lerpf(heights[idx], waste_height(wx, wz), t)
 			road_mask[idx] *= 1.0 - t
 
@@ -298,7 +317,7 @@ func _build_ice_plateaus(noise_seed: int) -> void:
 	_mesas.clear()
 	_canyons.clear()
 	var reach := HALF * 0.7
-	for i in 4:
+	for i in 10:
 		_mesas.append({
 			"pos": Vector2(rng.randf_range(-reach, reach), rng.randf_range(-reach, reach)),
 			"radius": rng.randf_range(200.0, 340.0),
@@ -308,7 +327,7 @@ func _build_ice_plateaus(noise_seed: int) -> void:
 			"yaw": rng.randf_range(-PI, PI),
 			"cliff": rng.randf_range(8.0, 14.0),
 		})
-	for i in 5:
+	for i in 14:
 		_mesas.append({
 			"pos": Vector2(rng.randf_range(-reach, reach), rng.randf_range(-reach, reach)),
 			"radius": rng.randf_range(90.0, 180.0),
@@ -451,6 +470,7 @@ func raise_highlands() -> void:
 			var wz := -HALF + float(z) * cell
 			var idx := z * RES + x
 			heights[idx] += _highland_lift(wx, wz)
+			heights[idx] = maxf(heights[idx], _border_rim(wx, wz))
 			min_h = minf(min_h, heights[idx])
 			max_h = maxf(max_h, heights[idx])
 
@@ -575,7 +595,7 @@ func _build_grass_hills(noise_seed: int) -> void:
 	_mesas.clear()
 	_canyons.clear()
 	var reach := HALF * 0.8
-	for _i in 12:
+	for _i in 36:
 		_mesas.append({
 			"pos": Vector2(rng.randf_range(-reach, reach), rng.randf_range(-reach, reach)),
 			"radius": rng.randf_range(240.0, 560.0),
@@ -602,9 +622,12 @@ func _grass_color(x: float, z: float, h: float, normal: Vector3, road: float) ->
 	col = col.lerp(Color(0.02, 0.1, 0.05), clampf(slope * 1.4, 0.0, 0.5))
 	if h > 28.0:
 		col = col.lerp(Color(0.08, 0.24, 0.1), clampf((h - 28.0) / 30.0, 0.0, 0.35))
+	if h > 96.0:
+		var rock := Color(0.42, 0.4, 0.34).lerp(Color(0.24, 0.22, 0.2), slope)
+		col = col.lerp(rock, clampf((h - 96.0) / 80.0, 0.0, 0.92))
 	if road > 0.05:
-		var track := Color(0.48, 0.42, 0.24)
-		col = col.lerp(track, clampf(road, 0.0, 1.0) * 0.65)
+		var track := Color(0.2, 0.14, 0.08)
+		col = col.lerp(track, clampf(road, 0.0, 1.0) * 0.82)
 	return col
 
 
@@ -622,6 +645,46 @@ func _hill_lift(x: float, z: float) -> float:
 		var shape := Util.smoothstep(radius, radius * 0.22, d)
 		lift = maxf(lift, float(mesa.height) * shape)
 	return lift * fade
+
+
+func _border_rim(x: float, z: float) -> float:
+	var edge := minf(minf(x + HALF, HALF - x), minf(z + HALF, HALF - z))
+	if planet == "ice":
+		var sheer := Util.smoothstep(78.0, 46.0, edge)
+		var lip := 8.0 * sin(x * 0.012 + z * 0.009)
+		return (148.0 + lip) * sheer
+	if planet == "grass":
+		return _grass_mountains(x, z)
+	return 0.0
+
+
+func _mtn_ridge(x: float, z: float) -> float:
+	if _ridge == null:
+		return 0.0
+	return pow(1.0 - absf(_ridge.get_noise_2d(x, z)), 1.65)
+
+
+func _grass_mountains(x: float, z: float) -> float:
+	var edge := minf(minf(x + HALF, HALF - x), minf(z + HALF, HALF - z))
+	if edge > 1600.0:
+		return 0.0
+	var along := z if absf(x) >= absf(z) else x
+	var broad := _mtn_ridge(x * 0.55 + 900.0, z * 0.55)
+	var phase := along * 0.0034 + broad * 5.0
+	var bead := lerpf(0.34, 1.0, pow(absf(sin(phase)), 1.15))
+	var bead_b := lerpf(0.4, 1.0, pow(absf(sin(phase + 1.7)), 1.25))
+	var crest_a := 620.0 + broad * 220.0
+	var crest_b := 240.0 + (1.0 - broad) * 150.0
+	var body_a := Util.smoothstep(340.0, 80.0, absf(edge - crest_a))
+	var body_b := Util.smoothstep(230.0, 50.0, absf(edge - crest_b))
+	var h := body_a * bead * (150.0 + broad * 180.0)
+	h = maxf(h, body_b * bead_b * (120.0 + _mtn_ridge(x, z) * 150.0))
+	var front := Util.smoothstep(1450.0, 860.0, edge)
+	h = maxf(h, front * (14.0 + broad * 34.0) * lerpf(0.45, 1.0, bead))
+	if edge < 80.0:
+		var shelf := Util.smoothstep(80.0, -220.0, edge)
+		h = maxf(h, shelf * (80.0 + broad * 70.0))
+	return h
 
 
 func _border_fade(x: float, z: float) -> float:
