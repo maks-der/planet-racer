@@ -1,8 +1,8 @@
 class_name ArrivalLoading
 extends Node3D
 
-var voyage_time := 6.4
-var fade_time := 1.6
+var voyage_time := 9.2
+var fade_time := 1.9
 var progress := 0.04
 var elapsed := 0.0
 var _fade := 0.0
@@ -20,12 +20,12 @@ var planet_scale := Vector3.ONE
 var ship_scale := Vector3.ONE
 var approach_from := Vector3(9.4, 1.6, 7.2)
 var approach_to := Vector3(4.6, 0.85, 3.4)
-var cam_from := Vector3(4.4, 1.15, 9.6)
-var cam_to := Vector3(4.4, 1.15, 9.6)
-var look_from := Vector3(1.7, 0.25, -0.2)
-var look_to := Vector3(1.7, 0.25, -0.2)
-var cam_fov := 58.0
-var cam_roll := 0.0
+var cam_from := Vector3(12.4, 5.6, 22.0)
+var cam_to := Vector3(5.2, 1.35, 14.6)
+var look_from := Vector3(-8.4, -2.4, -3.2)
+var look_to := Vector3(-0.6, 0.55, 1.4)
+var cam_fov := 46.0
+var cam_roll := 11.0
 var title_color := Color(0.95, 0.82, 0.62)
 
 

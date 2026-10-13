@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/arrival_loading.gd" id="1_arrival"]
-[ext_resource type="PackedScene" path="res://scenes/loading/desert_starfield.tscn" id="2_stars"]
+[ext_resource type="PackedScene" path="res://scenes/loading/starfield.tscn" id="2_stars"]
 [ext_resource type="PackedScene" path="res://scenes/loading/desert_planet.tscn" id="3_planet"]
 
 [node name="Arrival" type="Node3D"]

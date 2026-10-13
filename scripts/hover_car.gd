@@ -64,6 +64,7 @@ var _arc_seed := 0
 var _arc2_live := false
 var _hit_speed := 0.0
 var _hit_decel := 0.0
+var _blip_cd := 0.0
 var _hull_smoke: GPUParticles3D
 
 
@@ -109,6 +110,9 @@ func _apply_damage() -> void:
 	boost = minf(boost, _boost_limit())
 	if not ai and amount > 0.35:
 		hit_shake = maxf(hit_shake, clampf(amount / 14.0, 0.28, 1.0))
+		if _blip_cd <= 0.0:
+			Sfx.beep(self, 1240.0, 0.04, -8.0)
+			_blip_cd = 0.16
 
 
 func _physics_process(dt: float) -> void:
@@ -118,6 +122,8 @@ func _physics_process(dt: float) -> void:
 		fix_flash = maxf(0.0, fix_flash - dt)
 	if hit_shake > 0.0:
 		hit_shake = maxf(0.0, hit_shake - dt * 1.7)
+	if _blip_cd > 0.0:
+		_blip_cd = maxf(0.0, _blip_cd - dt)
 	_time += dt
 	var input := _read_input()
 	_steer_f = lerpf(_steer_f, float(input.steer), 1.0 - exp(-7.5 * dt))

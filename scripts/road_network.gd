@@ -132,7 +132,7 @@ func _article_polygon(slot: int) -> PackedVector2Array:
 	if terrain.planet == "grass":
 		jitter *= 0.28
 	elif terrain.planet == "ice":
-		jitter *= 0.35
+		jitter *= 0.02
 	var ang := TAU * float(slot) / 8.0 + jitter
 	var raw_x := lerpf(250.0, 390.0, float(slot) / 7.0) * _rng.randf_range(0.92, 1.06)
 	var half_x := raw_x * stretch
@@ -140,7 +140,7 @@ func _article_polygon(slot: int) -> PackedVector2Array:
 	if terrain.planet == "grass":
 		ratio = lerpf(0.36, 0.50, (ratio - 0.68) / 0.22)
 	elif terrain.planet == "ice":
-		ratio = lerpf(0.42, 0.58, (ratio - 0.68) / 0.22)
+		ratio = lerpf(0.72, 0.82, (ratio - 0.68) / 0.22)
 	var half_z := half_x * ratio
 	var limit := TerrainField.HALF * 0.76
 	if terrain.planet == "grass" or terrain.planet == "ice":
@@ -161,14 +161,16 @@ func _article_polygon(slot: int) -> PackedVector2Array:
 	var ring := minf(540.0 + _rng.randf_range(-40.0, 50.0), ring_cap)
 	if terrain.planet == "grass":
 		ring = maxf(0.0, limit - limit * 0.30 - 160.0)
-	elif terrain.planet == "ice":
-		ring = maxf(0.0, limit - limit * 0.32 - 120.0)
 	var center := Vector2(cos(ang), sin(ang)) * ring
+	if terrain.planet == "ice":
+		var reach := 540.0
+		var ice_ring := (reach * 2.0 + 56.0) / (2.0 * sin(PI / 8.0))
+		return _round_circuit(Vector2(cos(ang), sin(ang)) * ice_ring, reach)
 	var difficulty := lerpf(0.45, 7.0, float(slot) / 7.0)
 	var span := maxf(half_x, half_z) * 2.0
 	var apart := maxf(88.0, span * 0.07)
 	var max_disp := span * 0.16
-	if terrain.planet == "grass" or terrain.planet == "ice":
+	if terrain.planet == "grass":
 		max_disp = span * 0.08
 	for attempt in 8:
 		var shaped := _shape_polygon(center, half_x, half_z, difficulty, apart, max_disp, attempt < 6)
@@ -188,6 +190,15 @@ func _article_polygon(slot: int) -> PackedVector2Array:
 	if stretch > 1.01:
 		fallback = _spin_loop(fallback, center, ang)
 	return fallback
+
+
+func _round_circuit(center: Vector2, reach: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	var steps := 18
+	for i in steps:
+		var a := TAU * float(i) / float(steps)
+		pts.append(_clamp_map(center + Vector2(cos(a), sin(a)) * reach))
+	return pts
 
 
 func _spin_loop(pts: PackedVector2Array, origin: Vector2, yaw: float) -> PackedVector2Array:

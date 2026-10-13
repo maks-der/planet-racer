@@ -45,6 +45,10 @@ var _port_ice: Button
 var _port_grass: Button
 var _map_open := false
 var cash_label: Label
+var _hull_chip: Label
+var _prev_hp := -1.0
+var _hit_flash := 0.0
+var _hit_amount := 0.0
 var _bet_panel: Control
 var _bet_open := false
 var _bet_index := -1
@@ -100,6 +104,8 @@ func _process(_dt: float) -> void:
 		view_time -= _dt
 		if view_time <= 0.0 and view_label:
 			view_label.visible = false
+	if _hit_flash > 0.0:
+		_hit_flash = maxf(0.0, _hit_flash - _dt)
 	if _garage == null and not _menu_buttons.is_empty():
 		if Input.is_action_just_pressed("ui_up") or Input.is_action_just_pressed("ui_left"):
 			_steer_menu(-1)
@@ -193,6 +199,21 @@ func _refresh() -> void:
 		_boost_mark.position = Vector2(maxf(180.0 * cap - 1.0, 0.0), 0.0)
 		_boost_mark.visible = cap < 0.995
 		_boost_fill.color = Color(0.95, 0.28, 0.18) if cap < 0.3 else Color(1.0, 0.55, 0.16)
+	if _prev_hp < 0.0:
+		_prev_hp = car.hp
+	var lost := _prev_hp - car.hp
+	if lost > 0.45:
+		_hit_amount = lost if _hit_flash < 0.35 else _hit_amount + lost
+		_hit_flash = 1.6
+	_prev_hp = car.hp
+	if _hull_chip:
+		if _hit_flash > 0.0:
+			_hull_chip.text = "-%d" % int(round(_hit_amount))
+			_hull_chip.add_theme_color_override("font_color", Color(1.0, 0.38, 0.22))
+		else:
+			_hull_chip.text = "HULL %d" % int(round(car.hp))
+			var hull_tone := Color(0.55, 0.92, 0.64) if car.hp > 40.0 else Color(1.0, 0.58, 0.3)
+			_hull_chip.add_theme_color_override("font_color", hull_tone)
 	if hull_label:
 		if car.fix_flash > 0.0:
 			hull_label.visible = true
@@ -359,11 +380,20 @@ func _build_drive_ui(root: Control) -> void:
 	_boost_mark.size = Vector2(2, 16)
 	_boost_mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	meter.add_child(_boost_mark)
+	var boost_row := HBoxContainer.new()
+	vb.add_child(boost_row)
 	var boost_name := Label.new()
 	boost_name.text = "BOOST"
 	boost_name.add_theme_font_size_override("font_size", 12)
 	boost_name.add_theme_color_override("font_color", Color(1.0, 0.62, 0.22))
-	vb.add_child(boost_name)
+	boost_row.add_child(boost_name)
+	_hull_chip = Label.new()
+	_hull_chip.text = "HULL 100"
+	_hull_chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_hull_chip.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_hull_chip.add_theme_font_size_override("font_size", 12)
+	_hull_chip.add_theme_color_override("font_color", Color(0.55, 0.92, 0.64))
+	boost_row.add_child(_hull_chip)
 
 	hull_label = Label.new()
 	hull_label.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
